@@ -20,6 +20,7 @@ import { ShiftPage } from '@/features/shifts/ShiftPage'
 import { CommissionRulesPage } from '@/features/commission/CommissionRulesPage'
 import { CommissionReportPage } from '@/features/commission/CommissionReportPage'
 import { AttendantDashboardPage } from '@/features/commission/AttendantDashboardPage'
+import { PayrollPage } from '@/features/payroll/PayrollPage'
 
 export default function App() {
   return (
@@ -54,6 +55,14 @@ export default function App() {
                 element={
                   <RoleGuard allowedRoles={['admin', 'manager']}>
                     <CommissionReportPage />
+                  </RoleGuard>
+                }
+              />
+              <Route
+                path="/payroll"
+                element={
+                  <RoleGuard allowedRoles={['admin', 'manager']}>
+                    <PayrollPage />
                   </RoleGuard>
                 }
               />

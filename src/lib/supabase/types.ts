@@ -761,6 +761,73 @@ export interface Database {
         Update: never
         Relationships: []
       }
+      payroll_periods: {
+        Row: {
+          id: string
+          tenant_id: string
+          period_type: 'daily' | 'weekly' | 'semi_monthly' | 'custom'
+          start_date: string
+          end_date: string
+          status: 'draft' | 'locked' | 'paid'
+          locked_at: string | null
+          locked_by: string | null
+          paid_at: string | null
+          created_by: string
+          created_at: string
+        }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
+      payroll_entries: {
+        Row: {
+          id: string
+          tenant_id: string
+          payroll_period_id: string
+          employee_id: string
+          base_pay: number
+          commission_total: number
+          tips: number
+          bonus: number
+          cash_advance: number
+          deductions: number
+          adjustments: number
+          net_pay: number
+          created_at: string
+        }
+        Insert: never
+        Update: {
+          base_pay?: number
+          tips?: number
+          bonus?: number
+          cash_advance?: number
+          deductions?: number
+          adjustments?: number
+        }
+        Relationships: []
+      }
+      payroll_adjustments: {
+        Row: {
+          id: string
+          tenant_id: string
+          payroll_entry_id: string
+          amount: number
+          reason: string
+          created_by: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          payroll_entry_id: string
+          amount: number
+          reason: string
+          created_by: string
+          created_at?: string
+        }
+        Update: never
+        Relationships: []
+      }
     }
     Views: {
       ticket_board_entries: {
@@ -832,6 +899,18 @@ export interface Database {
       current_employee_id: {
         Args: Record<string, never>
         Returns: string
+      }
+      generate_payroll_period: {
+        Args: { p_period_type: string; p_start_date: string; p_end_date: string }
+        Returns: Json
+      }
+      lock_payroll_period: {
+        Args: { p_period_id: string }
+        Returns: Json
+      }
+      mark_payroll_period_paid: {
+        Args: { p_period_id: string }
+        Returns: Json
       }
     }
     Enums: Record<string, never>
