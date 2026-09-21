@@ -2,6 +2,16 @@
 
 Major implementation changes, newest first. This tracks the new 8-phase roadmap (OtoKwikk Car Wash Management System); see the git history before 2026-09-21 for the earlier, since-superseded simple-POS build (Phases 0–2 of the original scope).
 
+## Phase 3 — Commission (2026-09-21/22)
+
+- **Commission rules**: one rule per service, or a tenant-wide default used as fallback. Supports fixed-pool, percentage-of-price, fixed-per-attendant, and points methods directly; custom/role-based splits work via a per-attendant split-percentage override on the existing crew assignment (no separate role-rate table needed).
+- **Commission ledger**: a proper append-only ledger — a reversal will be a new row referencing what it reverses, never an edit to the original.
+- **`complete_job()`**: the "Picked up" action now completes every open job-service line and computes commission for each atomically, in one transaction — idempotent (a repeated call is a no-op), and independent of whether the job has been paid for yet.
+- **My Commission**: an attendant's (or anyone's) own today's-earnings dashboard + recent history.
+- **Commission Report**: manager view, totals by employee then by service, for a date range.
+- Verified via SQL under real RLS enforcement: a 2-attendant fixed-pool job splits evenly, a repeat completion doesn't double-pay, and a 70/30 custom split computes correctly.
+- Known gap: no UI yet to set a custom split percentage at crew-assignment time — works end-to-end at the schema/RPC level, needs a Register control.
+
 ## Phase 2 — Core Car Wash POS (2026-09-21)
 
 - **Customers/vehicles**: registered customers are optional (a walk-in vehicle has no `customer_id` at all); vehicle make/model are free text, never FKs — the make/model lookup is only a convenience default. No stored `total_visits`/`total_spend`/`last_visit`/`loyalty_points` on customers — derived from jobs/sales at read time instead of mutable counters that could drift.

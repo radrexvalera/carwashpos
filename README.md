@@ -8,7 +8,7 @@ This README reflects what's actually implemented. See `CHANGELOG.md` for phase-b
 
 Built for a single-branch Philippine car wash (OtoKwikk / tenant "WashWash"), architected so a second branch or a second business can be added later without a schema rewrite — every table carries `tenant_id` (the business) and, where relevant, `location_id` (the branch).
 
-**Status**: Phases 1–2 of the new 8-phase roadmap are complete. Phase 1: multi-tenant RBAC, employee registry, vehicle-size/service-catalog taxonomy, business settings. Phase 2: the real job-based POS — Register (create a job), Job Queue (Kanban board), Collect Payment, and cashier shift management. The earlier, simpler ticket-based POS + bay board built before the roadmap pivot has been fully retired (deleted from the app; its database tables remain in Postgres, unused).
+**Status**: Phases 1–3 of the new 8-phase roadmap are complete. Phase 1: multi-tenant RBAC, employee registry, vehicle-size/service-catalog taxonomy, business settings. Phase 2: the real job-based POS — Register (create a job), Job Queue (Kanban board), Collect Payment, and cashier shift management. Phase 3: commission rules, an append-only commission ledger computed when a job completes, an attendant "My Commission" dashboard, and a manager-facing commission report. The earlier, simpler ticket-based POS + bay board built before the roadmap pivot has been fully retired (deleted from the app; its database tables remain in Postgres, unused).
 
 ## Architecture
 
@@ -88,7 +88,7 @@ New capability-based system (drives everything built from Phase 1 onward): tenan
 
 ## Commission logic
 
-Not implemented yet (roadmap Phase 3). The architecture plan calls for commission to be computed when an individual job-service line completes (not the whole job, not the payment), via an idempotent Postgres function, supporting fixed-pool/percentage/fixed-per-attendant/custom-split/role-based/points methods.
+Implemented (roadmap Phase 3). Commission is computed when a job completes (`complete_job()`), one entry per assigned attendant per service line, via an idempotent Postgres function — independent of whether the job has been paid for. Supports fixed-pool, percentage-of-price, fixed-per-attendant, and points methods; custom/role-based splits work via a per-attendant split-percentage override on the crew assignment (no separate role-rate table). No UI yet to set that split percentage — it's supported end-to-end at the schema/RPC level, just needs a Register control. Payroll periods (rolling ledger entries into locked pay periods) aren't built yet.
 
 ## Inventory logic
 
@@ -96,7 +96,8 @@ Not implemented yet (roadmap Phase 4). The architecture plan calls for a proper 
 
 ## Known limitations
 
-- No commission, payroll, inventory, expenses, promotions, loyalty, or reporting yet (roadmap Phases 3–6).
+- No payroll periods, inventory, expenses, promotions, or loyalty yet (roadmap Phases 3–6 continued).
+- No UI to set a custom commission split percentage at crew-assignment time.
 - No void/refund flow for a completed sale yet.
 - No PWA/service worker (planned for roadmap Phase 7) — offline support today is the Dexie outbox only, not full installability/asset caching.
 - Not deployed anywhere yet.
