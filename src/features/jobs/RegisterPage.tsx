@@ -95,7 +95,8 @@ export function RegisterPage() {
   }
 
   async function handleCreateVehicle() {
-    if (!profile || !newPlate.trim()) return
+    const effectivePlate = (newPlate || plateQuery).trim()
+    if (!profile || !effectivePlate) return
     setCreatingVehicle(true)
     try {
       let customerId: string | null = null
@@ -109,7 +110,7 @@ export function RegisterPage() {
       const vehicleId = await createVehicle({
         tenantId: profile.tenantId,
         customerId,
-        plateNumber: newPlate.trim().toUpperCase(),
+        plateNumber: effectivePlate.toUpperCase(),
         make: newMake.trim() || null,
         model: newModel.trim() || null,
         color: newColor.trim() || null,
@@ -120,7 +121,7 @@ export function RegisterPage() {
         id: vehicleId,
         tenant_id: profile.tenantId,
         customer_id: customerId,
-        plate_number: newPlate.trim().toUpperCase(),
+        plate_number: effectivePlate.toUpperCase(),
         make: newMake.trim() || null,
         model: newModel.trim() || null,
         year: null,
