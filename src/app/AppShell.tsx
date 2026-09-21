@@ -22,6 +22,12 @@ const navItems: { to: string; label: string; roles?: Role[] }[] = [
   { to: '/admin/bays', label: 'Bays', roles: ['admin', 'manager'] },
   { to: '/admin/employees', label: 'Employees', roles: ['admin', 'manager'] },
   { to: '/admin/commission-rules', label: 'Commission Rules', roles: ['admin', 'manager'] },
+  { to: '/inventory', label: 'Inventory', roles: ['admin', 'manager'] },
+  { to: '/inventory/purchases', label: 'Purchases', roles: ['admin', 'manager'] },
+  { to: '/admin/suppliers', label: 'Suppliers', roles: ['admin', 'manager'] },
+  { to: '/admin/service-recipes', label: 'Service Recipes', roles: ['admin', 'manager'] },
+  { to: '/admin/inventory-categories', label: 'Inventory Categories', roles: ['admin', 'manager'] },
+  { to: '/admin/inventory-units', label: 'Inventory Units', roles: ['admin', 'manager'] },
   { to: '/admin/settings', label: 'Settings', roles: ['admin'] },
 ]
 

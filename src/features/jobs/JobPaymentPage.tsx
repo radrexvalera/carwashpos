@@ -10,9 +10,11 @@ import { Separator } from '@/components/ui/separator'
 import { formatMoney } from '@/lib/money'
 import { getActiveShift } from '@/features/shifts/api/shiftsApi'
 import { createSaleForJob, getJobForPayment } from './api/jobPaymentApi'
+import type { InventoryStockLevel } from '@/features/inventory/api/inventoryApi'
 
 type JobService = { id: string; unit_price: number; quantity: number; line_total: number; serviceName: string }
 type PaymentMethod = 'cash' | 'gcash' | 'maya' | 'bank_transfer' | 'card'
+type ProductLine = { itemId: string; name: string; unitPrice: number; quantity: number }
 
 const METHOD_LABELS: Record<PaymentMethod, string> = {
   cash: 'Cash',
@@ -32,6 +34,9 @@ export function JobPaymentPage() {
   const [plate, setPlate] = useState('')
   const [jobServices, setJobServices] = useState<JobService[]>([])
   const [discounts, setDiscounts] = useState<Record<string, string>>({})
+  const [retailItems, setRetailItems] = useState<InventoryStockLevel[]>([])
+  const [productLines, setProductLines] = useState<ProductLine[]>([])
+  const [pickedItemId, setPickedItemId] = useState('')
   const [payments, setPayments] = useState<{ method: PaymentMethod; amount: number; referenceNote?: string }[]>([])
   const [method, setMethod] = useState<PaymentMethod>('cash')
   const [amount, setAmount] = useState('')
@@ -46,19 +51,35 @@ export function JobPaymentPage() {
         setJobNumber(jobData.job.job_number)
         setPlate(jobData.vehicle.plate_number)
         setJobServices(jobData.jobServices)
+        setRetailItems(jobData.retailItems)
         setShiftId(shift?.id ?? null)
       })
       .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to load job'))
       .finally(() => setLoading(false))
   }, [jobId])
 
-  const total = jobServices.reduce((sum, js) => {
+  const servicesTotal = jobServices.reduce((sum, js) => {
     const discount = Number(discounts[js.id] || 0)
     return sum + Math.max(0, js.line_total - discount)
   }, 0)
-  const roundedTotal = Math.round(total * 100) / 100
+  const productsTotal = productLines.reduce((sum, p) => sum + p.unitPrice * p.quantity, 0)
+  const roundedTotal = Math.round((servicesTotal + productsTotal) * 100) / 100
   const paidSoFar = payments.reduce((sum, p) => sum + p.amount, 0)
   const remaining = Math.round((roundedTotal - paidSoFar) * 100) / 100
+
+  function addProductLine() {
+    const item = retailItems.find((i) => i.id === pickedItemId)
+    if (!item || item.retail_price == null) return
+    setProductLines((prev) => {
+      const existing = prev.find((p) => p.itemId === item.id)
+      if (existing) return prev.map((p) => (p.itemId === item.id ? { ...p, quantity: p.quantity + 1 } : p))
+      return [...prev, { itemId: item.id, name: item.name, unitPrice: item.retail_price!, quantity: 1 }]
+    })
+  }
+
+  function removeProductLine(itemId: string) {
+    setProductLines((prev) => prev.filter((p) => p.itemId !== itemId))
+  }
 
   function addPayment() {
     const value = Number(amount || remaining)
@@ -76,6 +97,7 @@ export function JobPaymentPage() {
         shiftId,
         jobId,
         lineItems: jobServices.map((js) => ({ jobServiceId: js.id, discountAmount: Number(discounts[js.id] || 0) })),
+        productLines: productLines.map((p) => ({ itemId: p.itemId, quantity: p.quantity })),
         payments,
       })
       setResult({ saleNumber: sale.sale_number, total: sale.total })
@@ -153,7 +175,51 @@ export function JobPaymentPage() {
               </div>
             </div>
           ))}
-          <Separator />
+        </CardContent>
+      </Card>
+
+      {retailItems.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Add a product</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            <div className="flex items-end gap-2">
+              <Select value={pickedItemId} onValueChange={setPickedItemId}>
+                <SelectTrigger className="flex-1">
+                  <SelectValue placeholder="Select product" />
+                </SelectTrigger>
+                <SelectContent>
+                  {retailItems.map((i) => (
+                    <SelectItem key={i.id} value={i.id}>
+                      {i.name} — {formatMoney(i.retail_price ?? 0)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button variant="secondary" onClick={addProductLine} disabled={!pickedItemId}>
+                Add
+              </Button>
+            </div>
+            {productLines.map((p) => (
+              <div key={p.itemId} className="flex items-center justify-between text-sm">
+                <span>
+                  {p.name} × {p.quantity}
+                </span>
+                <div className="flex items-center gap-2">
+                  <span>{formatMoney(p.unitPrice * p.quantity)}</span>
+                  <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => removeProductLine(p.itemId)}>
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        <CardContent className="pt-6">
           <div className="flex justify-between text-lg font-semibold">
             <span>Total</span>
             <span>{formatMoney(roundedTotal)}</span>
@@ -225,6 +291,8 @@ export function JobPaymentPage() {
           <Button variant="secondary" onClick={addPayment} disabled={remaining <= 0}>
             Add payment
           </Button>
+
+          <Separator />
 
           <Button
             size="lg"

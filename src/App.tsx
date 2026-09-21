@@ -21,6 +21,12 @@ import { CommissionRulesPage } from '@/features/commission/CommissionRulesPage'
 import { CommissionReportPage } from '@/features/commission/CommissionReportPage'
 import { AttendantDashboardPage } from '@/features/commission/AttendantDashboardPage'
 import { PayrollPage } from '@/features/payroll/PayrollPage'
+import { InventoryCategoriesPage } from '@/features/inventory/InventoryCategoriesPage'
+import { InventoryUnitsPage } from '@/features/inventory/InventoryUnitsPage'
+import { InventoryItemsPage } from '@/features/inventory/InventoryItemsPage'
+import { SuppliersPage } from '@/features/inventory/SuppliersPage'
+import { PurchaseOrdersPage } from '@/features/inventory/PurchaseOrdersPage'
+import { ServiceRecipesPage } from '@/features/inventory/ServiceRecipesPage'
 
 export default function App() {
   return (
@@ -119,6 +125,54 @@ export default function App() {
                 element={
                   <RoleGuard allowedRoles={['admin']}>
                     <SettingsPage />
+                  </RoleGuard>
+                }
+              />
+              <Route
+                path="/inventory"
+                element={
+                  <RoleGuard allowedRoles={['admin', 'manager']}>
+                    <InventoryItemsPage />
+                  </RoleGuard>
+                }
+              />
+              <Route
+                path="/admin/inventory-categories"
+                element={
+                  <RoleGuard allowedRoles={['admin', 'manager']}>
+                    <InventoryCategoriesPage />
+                  </RoleGuard>
+                }
+              />
+              <Route
+                path="/admin/inventory-units"
+                element={
+                  <RoleGuard allowedRoles={['admin', 'manager']}>
+                    <InventoryUnitsPage />
+                  </RoleGuard>
+                }
+              />
+              <Route
+                path="/admin/suppliers"
+                element={
+                  <RoleGuard allowedRoles={['admin', 'manager']}>
+                    <SuppliersPage />
+                  </RoleGuard>
+                }
+              />
+              <Route
+                path="/inventory/purchases"
+                element={
+                  <RoleGuard allowedRoles={['admin', 'manager']}>
+                    <PurchaseOrdersPage />
+                  </RoleGuard>
+                }
+              />
+              <Route
+                path="/admin/service-recipes"
+                element={
+                  <RoleGuard allowedRoles={['admin', 'manager']}>
+                    <ServiceRecipesPage />
                   </RoleGuard>
                 }
               />

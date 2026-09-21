@@ -29,17 +29,26 @@ export async function getJobForPayment(jobId: string) {
 
   const serviceNameById = new Map((services ?? []).map((s) => [s.id, s.name]))
 
+  const { data: retailItems, error: retailError } = await supabase
+    .from('inventory_stock_levels')
+    .select('*')
+    .eq('item_type', 'retail')
+    .eq('is_active', true)
+  if (retailError) throw retailError
+
   return {
     job,
     vehicle,
     jobServices: (jobServices ?? []).map((js) => ({ ...js, serviceName: serviceNameById.get(js.service_id) ?? 'Service' })),
+    retailItems: retailItems ?? [],
   }
 }
 
 interface CreateSaleInput {
   shiftId: string
-  jobId: string
+  jobId: string | null
   lineItems: { jobServiceId: string; discountAmount: number }[]
+  productLines: { itemId: string; quantity: number }[]
   payments: { method: string; amount: number; referenceNote?: string }[]
 }
 
@@ -48,11 +57,18 @@ export async function createSaleForJob(input: CreateSaleInput) {
     client_generated_id: crypto.randomUUID(),
     shift_id: input.shiftId,
     job_id: input.jobId,
-    line_items: input.lineItems.map((l) => ({
-      line_type: 'job_service',
-      job_service_id: l.jobServiceId,
-      discount_amount: l.discountAmount,
-    })),
+    line_items: [
+      ...input.lineItems.map((l) => ({
+        line_type: 'job_service',
+        job_service_id: l.jobServiceId,
+        discount_amount: l.discountAmount,
+      })),
+      ...input.productLines.map((p) => ({
+        line_type: 'product',
+        product_id: p.itemId,
+        quantity: p.quantity,
+      })),
+    ],
     payments: input.payments.map((p) => ({ method: p.method, amount: p.amount, reference_note: p.referenceNote })),
   }
 

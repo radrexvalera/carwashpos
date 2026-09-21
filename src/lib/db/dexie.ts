@@ -9,28 +9,26 @@ type VehicleSizeRow = Database['public']['Tables']['vehicle_sizes']['Row']
 type ServiceRow = Database['public']['Tables']['services']['Row']
 type ServiceCategoryRow = Database['public']['Tables']['service_categories']['Row']
 type ServicePriceRow = Database['public']['Tables']['service_prices']['Row']
-type ProductRow = Database['public']['Tables']['products']['Row']
-type ConsumableRow = Database['public']['Tables']['consumables']['Row']
 type BayRow = Database['public']['Tables']['wash_bays']['Row']
 type VehicleMakeRow = Database['public']['Tables']['vehicle_makes']['Row']
 type VehicleModelRow = Database['public']['Tables']['vehicle_models']['Row']
 type EmployeeRow = Database['public']['Tables']['employees']['Row']
 type VehicleRow = Database['public']['Tables']['vehicles']['Row']
 type CustomerRow = Database['public']['Tables']['customers']['Row']
+type InventoryItemRow = Database['public']['Tables']['inventory_items']['Row']
 
 class CarWashDB extends Dexie {
   vehicleSizes!: EntityTable<VehicleSizeRow, 'id'>
   services!: EntityTable<ServiceRow, 'id'>
   serviceCategories!: EntityTable<ServiceCategoryRow, 'id'>
   servicePrices!: EntityTable<ServicePriceRow, 'id'>
-  products!: EntityTable<ProductRow, 'id'>
-  consumables!: EntityTable<ConsumableRow, 'id'>
   bays!: EntityTable<BayRow, 'id'>
   vehicleMakes!: EntityTable<VehicleMakeRow, 'id'>
   vehicleModels!: EntityTable<VehicleModelRow, 'id'>
   employees!: EntityTable<EmployeeRow, 'id'>
   vehicles!: EntityTable<VehicleRow, 'id'>
   customers!: EntityTable<CustomerRow, 'id'>
+  inventoryItems!: EntityTable<InventoryItemRow, 'id'>
 
   // Outbox-backed: local optimistic tickets/jobs (keyed by the client-generated id, stable across
   // the whole offline -> synced lifecycle) and the mutation queue that actually drives syncing them.
@@ -85,6 +83,15 @@ class CarWashDB extends Dexie {
       boardJobs: 'id, tenantId, clientGeneratedId, status, bayId',
       vehicles: 'id, tenant_id, plate_number, customer_id',
       customers: 'id, tenant_id, mobile',
+    })
+
+    // Phase 4 (new roadmap): products/consumables replaced by one unified inventory_items table
+    // -- their Dexie stores are dropped (this was always just a read-cache) in favor of
+    // inventoryItems.
+    this.version(6).stores({
+      products: null,
+      consumables: null,
+      inventoryItems: 'id, tenant_id, item_type, category_id',
     })
   }
 }

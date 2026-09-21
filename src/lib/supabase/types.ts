@@ -296,43 +296,112 @@ export interface Database {
         Update: Partial<Database['public']['Tables']['service_prices']['Insert']>
         Relationships: []
       }
-      products: {
+      inventory_categories: {
         Row: {
           id: string
           tenant_id: string
+          name: string
+          sort_order: number
+          is_active: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          name: string
+          sort_order?: number
+          is_active?: boolean
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['inventory_categories']['Insert']>
+        Relationships: []
+      }
+      inventory_units: {
+        Row: {
+          id: string
+          tenant_id: string
+          name: string
+          abbreviation: string
+          base_unit_id: string | null
+          conversion_factor: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          name: string
+          abbreviation: string
+          base_unit_id?: string | null
+          conversion_factor?: number
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['inventory_units']['Insert']>
+        Relationships: []
+      }
+      inventory_items: {
+        Row: {
+          id: string
+          tenant_id: string
+          category_id: string | null
+          name: string
           sku: string | null
-          name: string
-          price: number
-          cost: number | null
-          stock_qty: number
-          reorder_threshold: number | null
+          item_type: 'retail' | 'consumable' | 'reusable_equipment' | 'asset'
+          unit_id: string
+          retail_price: number | null
+          min_stock: number | null
+          reorder_level: number | null
+          target_stock: number | null
           is_active: boolean
           created_at: string
         }
         Insert: {
           id?: string
           tenant_id: string
+          category_id?: string | null
+          name: string
           sku?: string | null
-          name: string
-          price: number
-          cost?: number | null
-          stock_qty?: number
-          reorder_threshold?: number | null
+          item_type: 'retail' | 'consumable' | 'reusable_equipment' | 'asset'
+          unit_id: string
+          retail_price?: number | null
+          min_stock?: number | null
+          reorder_level?: number | null
+          target_stock?: number | null
           is_active?: boolean
           created_at?: string
         }
-        Update: Partial<Database['public']['Tables']['products']['Insert']>
+        Update: Partial<Database['public']['Tables']['inventory_items']['Insert']>
         Relationships: []
       }
-      consumables: {
+      inventory_transactions: {
+        Row: {
+          id: string
+          tenant_id: string
+          item_id: string
+          transaction_type: string
+          quantity_delta: number
+          previous_qty: number
+          new_qty: number
+          unit_cost_at_time: number | null
+          reference_type: string | null
+          reference_id: string | null
+          reason: string | null
+          created_by: string
+          created_at: string
+        }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
+      suppliers: {
         Row: {
           id: string
           tenant_id: string
           name: string
-          unit: string
-          unit_cost: number
-          stock_qty_book: number
-          reorder_threshold: number | null
+          contact_person: string | null
+          mobile: string | null
+          email: string | null
+          address: string | null
+          notes: string | null
           is_active: boolean
           created_at: string
         }
@@ -340,22 +409,57 @@ export interface Database {
           id?: string
           tenant_id: string
           name: string
-          unit: string
-          unit_cost?: number
-          stock_qty_book?: number
-          reorder_threshold?: number | null
+          contact_person?: string | null
+          mobile?: string | null
+          email?: string | null
+          address?: string | null
+          notes?: string | null
           is_active?: boolean
           created_at?: string
         }
-        Update: Partial<Database['public']['Tables']['consumables']['Insert']>
+        Update: Partial<Database['public']['Tables']['suppliers']['Insert']>
         Relationships: []
       }
-      service_bom: {
+      purchase_orders: {
+        Row: {
+          id: string
+          tenant_id: string
+          supplier_id: string
+          reference_number: string | null
+          order_date: string
+          subtotal: number
+          discount_total: number
+          delivery_charge: number
+          total: number
+          created_by: string
+          created_at: string
+        }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
+      purchase_order_items: {
+        Row: {
+          id: string
+          tenant_id: string
+          purchase_order_id: string
+          item_id: string
+          quantity: number
+          unit_cost: number
+          discount_amount: number
+          line_total: number
+        }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
+      service_recipe_items: {
         Row: {
           id: string
           tenant_id: string
           service_id: string
-          consumable_id: string
+          vehicle_size_id: string | null
+          item_id: string
           quantity_used: number
           created_at: string
         }
@@ -363,11 +467,12 @@ export interface Database {
           id?: string
           tenant_id: string
           service_id: string
-          consumable_id: string
+          vehicle_size_id?: string | null
+          item_id: string
           quantity_used: number
           created_at?: string
         }
-        Update: Partial<Database['public']['Tables']['service_bom']['Insert']>
+        Update: Partial<Database['public']['Tables']['service_recipe_items']['Insert']>
         Relationships: []
       }
       wash_bays: {
@@ -685,7 +790,7 @@ export interface Database {
           sale_id: string
           line_type: 'job_service' | 'product'
           job_service_id: string | null
-          product_id: string | null
+          item_id: string | null
           description: string
           unit_price: number
           quantity: number
@@ -870,6 +975,29 @@ export interface Database {
         }
         Relationships: []
       }
+      inventory_stock_levels: {
+        Row: {
+          id: string
+          tenant_id: string
+          name: string
+          sku: string | null
+          item_type: 'retail' | 'consumable' | 'reusable_equipment' | 'asset'
+          category_id: string | null
+          unit_id: string
+          unit_abbreviation: string
+          retail_price: number | null
+          min_stock: number | null
+          reorder_level: number | null
+          target_stock: number | null
+          is_active: boolean
+          on_hand_qty: number
+          latest_unit_cost: number | null
+          average_unit_cost: number | null
+          inventory_value: number
+          is_low_stock: boolean
+        }
+        Relationships: []
+      }
     }
     Functions: {
       complete_ticket: {
@@ -910,6 +1038,14 @@ export interface Database {
       }
       mark_payroll_period_paid: {
         Args: { p_period_id: string }
+        Returns: Json
+      }
+      adjust_inventory_stock: {
+        Args: { p_item_id: string; p_transaction_type: string; p_quantity_delta: number; p_reason: string }
+        Returns: Json
+      }
+      create_purchase_order: {
+        Args: { payload: Json }
         Returns: Json
       }
     }
