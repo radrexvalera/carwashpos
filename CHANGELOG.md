@@ -11,6 +11,7 @@ Major implementation changes, newest first. This tracks the new 8-phase roadmap 
 - **Commission Report**: manager view, totals by employee then by service, for a date range.
 - Verified via SQL under real RLS enforcement: a 2-attendant fixed-pool job splits evenly, a repeat completion doesn't double-pay, and a 70/30 custom split computes correctly.
 - Known gap: no UI yet to set a custom split percentage at crew-assignment time — works end-to-end at the schema/RPC level, needs a Register control.
+- **Payroll periods**: `generate_payroll_period()` rolls unclaimed commission into one entry per employee for a date range (daily/weekly/semi-monthly/custom); manual fields (base pay/tips/bonus/cash advance/deductions) are editable while a period is a draft, `net_pay` is a generated column; `lock_payroll_period()` freezes entries (enforced by RLS, not just UI); `mark_payroll_period_paid()` propagates paid status back onto the commission ledger. Post-lock corrections are new `payroll_adjustments` rows, never edits. This closes out Phase 3.
 
 ## Phase 2 — Core Car Wash POS (2026-09-21)
 
