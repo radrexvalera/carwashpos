@@ -16,8 +16,10 @@ export interface LocalTicketLineItem {
   lineTotal: number
 }
 
+export type PaymentMethod = 'cash' | 'gcash' | 'maya' | 'bank_transfer' | 'card'
+
 export interface LocalTicketPayment {
-  method: 'cash' | 'e_wallet' | 'card'
+  method: PaymentMethod
   amount: number
   referenceNote?: string
 }

@@ -275,7 +275,7 @@ export interface Database {
           id: string
           tenant_id: string
           ticket_id: string
-          method: 'cash' | 'e_wallet' | 'card'
+          method: 'cash' | 'gcash' | 'maya' | 'bank_transfer' | 'card'
           amount: number
           reference_note: string | null
           paid_at: string

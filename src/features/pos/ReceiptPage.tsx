@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { useTenant } from '@/app/TenantProvider'
+import { formatMoney } from '@/lib/money'
 
 export function ReceiptPage() {
   const { clientGeneratedId } = useParams<{ clientGeneratedId: string }>()
@@ -19,7 +20,13 @@ export function ReceiptPage() {
     return <p className="text-muted-foreground">Ticket not found.</p>
   }
 
-  const paymentLabels: Record<string, string> = { cash: 'Cash', e_wallet: 'E-wallet', card: 'Card' }
+  const paymentLabels: Record<string, string> = {
+    cash: 'Cash',
+    gcash: 'GCash',
+    maya: 'Maya',
+    bank_transfer: 'Bank Transfer',
+    card: 'Card',
+  }
 
   return (
     <div className="mx-auto flex max-w-md flex-col gap-4">
@@ -54,7 +61,7 @@ export function ReceiptPage() {
                   {line.quantity > 1 ? ` ×${line.quantity}` : ''}
                   {line.lineType === 'service' && line.vehicleSizeClassName ? ` (${line.vehicleSizeClassName})` : ''}
                 </span>
-                <span>${line.lineTotal.toFixed(2)}</span>
+                <span>{formatMoney(line.lineTotal)}</span>
               </div>
             ))}
           </div>
@@ -63,7 +70,7 @@ export function ReceiptPage() {
 
           <div className="flex justify-between font-semibold">
             <span>Total</span>
-            <span>${ticket.total.toFixed(2)}</span>
+            <span>{formatMoney(ticket.total)}</span>
           </div>
 
           <Separator />
@@ -75,7 +82,7 @@ export function ReceiptPage() {
                   {paymentLabels[p.method]}
                   {p.referenceNote ? ` · ${p.referenceNote}` : ''}
                 </span>
-                <span>${p.amount.toFixed(2)}</span>
+                <span>{formatMoney(p.amount)}</span>
               </div>
             ))}
           </div>

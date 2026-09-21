@@ -6,7 +6,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
-import type { LocalTicketPayment } from '@/lib/offline/types'
+import { formatMoney } from '@/lib/money'
+import type { LocalTicketPayment, PaymentMethod } from '@/lib/offline/types'
 
 interface PaymentPanelProps {
   total: number
@@ -14,15 +15,19 @@ interface PaymentPanelProps {
   onComplete: (payments: LocalTicketPayment[]) => Promise<void>
 }
 
-const METHOD_LABELS: Record<LocalTicketPayment['method'], string> = {
+const METHOD_LABELS: Record<PaymentMethod, string> = {
   cash: 'Cash',
-  e_wallet: 'E-wallet',
+  gcash: 'GCash',
+  maya: 'Maya',
+  bank_transfer: 'Bank Transfer',
   card: 'Card',
 }
 
+const METHODS_WITH_REFERENCE: PaymentMethod[] = ['gcash', 'maya', 'bank_transfer']
+
 export function PaymentPanel({ total, disabled, onComplete }: PaymentPanelProps) {
   const [payments, setPayments] = useState<LocalTicketPayment[]>([])
-  const [method, setMethod] = useState<LocalTicketPayment['method']>('cash')
+  const [method, setMethod] = useState<PaymentMethod>('cash')
   const [amount, setAmount] = useState('')
   const [referenceNote, setReferenceNote] = useState('')
 
@@ -55,7 +60,7 @@ export function PaymentPanel({ total, disabled, onComplete }: PaymentPanelProps)
       <CardContent className="flex flex-col gap-4">
         <div className="flex justify-between text-lg font-semibold">
           <span>Total</span>
-          <span>${total.toFixed(2)}</span>
+          <span>{formatMoney(total)}</span>
         </div>
 
         {payments.length > 0 && (
@@ -67,7 +72,7 @@ export function PaymentPanel({ total, disabled, onComplete }: PaymentPanelProps)
                   {p.referenceNote ? ` · ${p.referenceNote}` : ''}
                 </span>
                 <div className="flex items-center gap-2">
-                  <span className="font-medium">${p.amount.toFixed(2)}</span>
+                  <span className="font-medium">{formatMoney(p.amount)}</span>
                   <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => removePayment(i)}>
                     <Trash2 className="h-3 w-3" />
                   </Button>
@@ -81,18 +86,22 @@ export function PaymentPanel({ total, disabled, onComplete }: PaymentPanelProps)
 
         <div className="flex justify-between text-sm">
           <span className="text-muted-foreground">Remaining</span>
-          <span className={remaining > 0.01 ? 'font-medium' : 'text-muted-foreground'}>${Math.max(remaining, 0).toFixed(2)}</span>
+          <span className={remaining > 0.01 ? 'font-medium' : 'text-muted-foreground'}>
+            {formatMoney(Math.max(remaining, 0))}
+          </span>
         </div>
 
         <div className="flex flex-col gap-2">
           <Label>Add payment</Label>
-          <Select value={method} onValueChange={(v) => setMethod(v as LocalTicketPayment['method'])}>
+          <Select value={method} onValueChange={(v) => setMethod(v as PaymentMethod)}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="cash">Cash</SelectItem>
-              <SelectItem value="e_wallet">E-wallet</SelectItem>
+              <SelectItem value="gcash">GCash</SelectItem>
+              <SelectItem value="maya">Maya</SelectItem>
+              <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
               <SelectItem value="card">Card</SelectItem>
             </SelectContent>
           </Select>
@@ -104,7 +113,7 @@ export function PaymentPanel({ total, disabled, onComplete }: PaymentPanelProps)
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
           />
-          {method === 'e_wallet' && (
+          {METHODS_WITH_REFERENCE.includes(method) && (
             <Input
               placeholder="Reference number (optional)"
               value={referenceNote}

@@ -9,7 +9,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
-import type { LocalTicketLineItem } from '@/lib/offline/types'
+import { formatMoney } from '@/lib/money'
+import type { LocalTicketLineItem, LocalTicketPayment } from '@/lib/offline/types'
 import { completeTicketOffline } from './api/ticketMutations'
 import { PaymentPanel } from './components/PaymentPanel'
 
@@ -111,7 +112,7 @@ export function PosPage() {
     setLines((prev) => prev.filter((_, i) => i !== index))
   }
 
-  async function handleComplete(payments: { method: 'cash' | 'e_wallet' | 'card'; amount: number; referenceNote?: string }[]) {
+  async function handleComplete(payments: LocalTicketPayment[]) {
     if (!profile || lines.length === 0) return
     setSubmitting(true)
     try {
@@ -175,7 +176,7 @@ export function PosPage() {
                 >
                   <span>{s.name}</span>
                   <span className="text-xs text-muted-foreground">
-                    {price !== undefined ? `$${price.toFixed(2)}` : 'No price for this size'}
+                    {price !== undefined ? formatMoney(price) : 'No price for this size'}
                   </span>
                 </Button>
               )
@@ -198,7 +199,7 @@ export function PosPage() {
               >
                 <span>{p.name}</span>
                 <span className="text-xs text-muted-foreground">
-                  ${p.price.toFixed(2)}
+                  {formatMoney(p.price)}
                   {p.stock_qty <= 0 && ' · low stock?'}
                 </span>
               </Button>
@@ -223,7 +224,7 @@ export function PosPage() {
                       </Badge>
                     )}
                   </div>
-                  <div className="text-xs text-muted-foreground">${line.unitPrice.toFixed(2)} each</div>
+                  <div className="text-xs text-muted-foreground">{formatMoney(line.unitPrice)} each</div>
                 </div>
                 <div className="flex items-center gap-2">
                   <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => updateQuantity(i, -1)}>
@@ -233,7 +234,7 @@ export function PosPage() {
                   <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => updateQuantity(i, 1)}>
                     <Plus className="h-3 w-3" />
                   </Button>
-                  <span className="w-16 text-right font-medium">${line.lineTotal.toFixed(2)}</span>
+                  <span className="w-16 text-right font-medium">{formatMoney(line.lineTotal)}</span>
                   <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => removeLine(i)}>
                     <Trash2 className="h-3 w-3" />
                   </Button>
