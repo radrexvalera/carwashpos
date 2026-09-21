@@ -8,7 +8,7 @@ This README reflects what's actually implemented. See `CHANGELOG.md` for phase-b
 
 Built for a single-branch Philippine car wash (OtoKwikk / tenant "WashWash"), architected so a second branch or a second business can be added later without a schema rewrite — every table carries `tenant_id` (the business) and, where relevant, `location_id` (the branch).
 
-**Status**: Phases 1–3 of the new 8-phase roadmap are complete. Phase 1: multi-tenant RBAC, employee registry, vehicle-size/service-catalog taxonomy, business settings. Phase 2: the real job-based POS — Register (create a job), Job Queue (Kanban board), Collect Payment, and cashier shift management. Phase 3: commission rules, an append-only commission ledger computed when a job completes, an attendant "My Commission" dashboard, a manager-facing commission report, and payroll periods (generate → edit → lock → mark paid, with post-lock corrections as adjustment rows, never edits). The earlier, simpler ticket-based POS + bay board built before the roadmap pivot has been fully retired (deleted from the app; its database tables remain in Postgres, unused).
+**Status**: Phases 1–4 of the new 8-phase roadmap are complete. Phase 1: multi-tenant RBAC, employee registry, vehicle-size/service-catalog taxonomy, business settings. Phase 2: the real job-based POS — Register (create a job), Job Queue (Kanban board), Collect Payment, and cashier shift management. Phase 3: commission rules, an append-only commission ledger computed when a job completes, an attendant "My Commission" dashboard, a manager-facing commission report, and payroll periods (generate → edit → lock → mark paid, with post-lock corrections as adjustment rows, never edits). Phase 4: a proper inventory ledger (items, categories, units, purchases, service recipes with auto-deduction on job completion, manual adjustments with a required reason), retail products sold through the same POS screen as services. The earlier, simpler ticket-based POS + bay board built before the roadmap pivot has been fully retired (deleted from the app; its database tables remain in Postgres, unused, along with the old `products`/`consumables`/`service_bom` tables which Phase 4 dropped outright).
 
 ## Architecture
 
@@ -74,7 +74,7 @@ Not yet configured. Target is Netlify or Vercel (static SPA build) once the app 
 
 ## Offline architecture
 
-- Catalog data (services, prices, vehicle sizes, products, bays, employees, vehicles, customers) is cached in IndexedDB via Dexie and refreshed on login and reconnect, so the register can build a job offline without a network round-trip.
+- Catalog data (services, prices, vehicle sizes, inventory items, bays, employees, vehicles, customers) is cached in IndexedDB via Dexie and refreshed on login and reconnect, so the register can build a job offline without a network round-trip.
 - Writes go through a `mutation_queue` outbox: the UI never calls Supabase directly for a mutating action, it writes an optimistic local record and enqueues one coarse-grained mutation (e.g. "create this job"), then a background sync engine flushes the queue on reconnect/interval.
 - Every offline-created record carries a client-generated UUID as its idempotency key, so a retried sync (e.g. after a dropped response) is a safe no-op instead of a duplicate.
 - Server-side, any shared mutable value (stock, job/ticket numbering) is always updated via a relative delta inside a Postgres function, never an absolute value sent from the client — this is what makes two devices syncing concurrently safe without conflict-resolution logic.
@@ -94,13 +94,14 @@ Payroll periods roll unclaimed commission into one entry per employee for a date
 
 ## Inventory logic
 
-Not implemented yet (roadmap Phase 4). The architecture plan calls for a proper stock ledger (never an overwritten running total) and size-dependent service recipes that auto-deduct consumables on job-service completion.
+Implemented (roadmap Phase 4, complete). `inventory_items` carries no stock/cost columns of its own — `inventory_transactions` is the single append-only ledger, and `record_inventory_transaction()` is the only write path (computes new balances server-side under a per-item advisory lock, never an overwritten running total). Purchases (`create_purchase_order()`) post a `stock_in` transaction per line; manual counts/corrections go through `adjust_inventory_stock()`, which requires the `can_manage_inventory` permission and a non-empty reason. Service recipes (`service_recipe_items`, optionally per vehicle size) auto-deduct on job-service completion inside the same transaction as commission — same idempotency guarantee as commission (a repeated completion is a no-op). Retail products are sold through the same Collect Payment screen as services, deducting stock via a `retail_sale` transaction.
 
 ## Known limitations
 
-- No inventory, expenses, promotions, or loyalty yet (roadmap Phases 4–6).
+- No expenses, promotions, or loyalty yet (roadmap Phases 5–6).
 - No UI to set a custom commission split percentage at crew-assignment time.
 - No void/refund flow for a completed sale yet.
+- No low-stock alert surfaced outside the inventory items table itself (no dashboard widget/notification yet).
 - No PWA/service worker (planned for roadmap Phase 7) — offline support today is the Dexie outbox only, not full installability/asset caching.
 - Not deployed anywhere yet.
 - This is an operational/management tool, not an accounting system — nothing here should be treated as BIR-compliant invoicing or statutory payroll unless and until those are explicitly built and validated.

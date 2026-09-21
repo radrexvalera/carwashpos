@@ -2,6 +2,17 @@
 
 Major implementation changes, newest first. This tracks the new 8-phase roadmap (OtoKwikk Car Wash Management System); see the git history before 2026-09-21 for the earlier, since-superseded simple-POS build (Phases 0–2 of the original scope).
 
+## Phase 4 — Inventory (2026-09-22)
+
+- **Items & ledger**: `inventory_items` (retail/consumable/reusable_equipment/asset) has no stock or cost columns of its own — `inventory_transactions` is the single append-only source of truth (opening_balance/purchase/stock_in/service_consumption/retail_sale/adjustment_positive/adjustment_negative/damaged/expired/lost/returned/transfer/manual_correction). `record_inventory_transaction()` is the sole write path: it computes `previous_qty`/`new_qty` server-side under a `pg_advisory_xact_lock` per item, so concurrent writers can't race. `inventory_stock_levels` is a `security_invoker` view aggregating the ledger into on-hand/avg-cost/value per item.
+- **Manual adjustments**: `adjust_inventory_stock()` is the client-facing wrapper — requires `can_manage_inventory` and a non-empty reason, never a bare quantity overwrite.
+- **Categories & units**: `inventory_categories` (sortable) and `inventory_units` (with a base-unit conversion factor, e.g. "liters per gallon") for reporting/recipe consistency.
+- **Service recipes**: `service_recipe_items` — expected consumable usage per service, optionally per vehicle size (a size-specific row overrides the "any size" default for the same item). `complete_job()` (Phase 3) was extended to also walk each completing job_service's recipe and post a `service_consumption` transaction in the same DB transaction as the commission entries — same idempotency guarantee (a repeated completion call is a no-op).
+- **Purchasing**: `suppliers`, `purchase_orders`/`purchase_order_items`. `create_purchase_order()` posts one `stock_in` transaction per line atomically with the order, so recording a purchase immediately reflects in stock on hand.
+- **Retail integrated into POS**: dropped the old `products`/`consumables`/`service_bom` tables (confirmed zero real rows, CASCADE-dropped along with the legacy `ticket_line_items` FK and `ticket_board_entries` view that depended on them). `sale_items.product_id` renamed to `item_id`, now pointing at `inventory_items`. `create_sale()` reworked to price retail lines from `inventory_items.retail_price` and deduct stock via a `retail_sale` transaction instead of a direct `UPDATE`. The Collect Payment screen (`JobPaymentPage`) now has a product picker so a cashier can ring up a retail item (e.g. air freshener) on the same sale as the job's services.
+- Frontend: Inventory Items (stock levels + adjust dialog with transaction history), Purchases, Suppliers, Service Recipes, Inventory Categories, Inventory Units — all admin/manager-gated.
+- Verified end-to-end via SQL under real RLS: purchase → stock-in reflected in stock levels; job completion → auto-consumption deducts recipe items exactly once even on repeated completion calls; manual adjustment rejected without a reason; retail sale deducts stock.
+
 ## Phase 3 — Commission (2026-09-21/22)
 
 - **Commission rules**: one rule per service, or a tenant-wide default used as fallback. Supports fixed-pool, percentage-of-price, fixed-per-attendant, and points methods directly; custom/role-based splits work via a per-attendant split-percentage override on the existing crew assignment (no separate role-rate table needed).
