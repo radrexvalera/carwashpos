@@ -2,6 +2,13 @@
 
 Major implementation changes, newest first. This tracks the new 8-phase roadmap (OtoKwikk Car Wash Management System); see the git history before 2026-09-21 for the earlier, since-superseded simple-POS build (Phases 0–2 of the original scope).
 
+## Phase 5 — Management: Expenses & Reports (2026-09-22)
+
+- **Expenses**: `expenses`/`expense_categories`, following the same discipline as every other ledger in the app — no direct insert/update policy, `record_expense()`/`void_expense()` (gated by `can_manage_expenses`) are the only write paths, and a trigger (`prevent_expense_tampering`) blocks editing a recorded expense's financial/identity fields after the fact. A correction is a void with a required reason, never a row edit. Deliberately standalone from `cash_movements`/shift reconciliation for v1, since most operating expenses (rent, utilities) aren't paid out of the till.
+- **Sales Report**: revenue by payment method, service vs. product revenue split, top services, discounts given, voided-sale count, and expenses by category, over a chosen date range — computed client-side from `sales`/`payments`/`sale_items`/`expenses`, no new base tables (reports are queries over existing data, per the original Phase 5 design).
+- **Owner Dashboard**: the placeholder Dashboard page is now a real summary — today's sales/expenses/net, pending (unpaid) commission, active jobs by status, jobs completed today, and low-stock item count with a link to Inventory.
+- Verified: `can_manage_expenses` confirmed granted to admin/manager on the live tenant, default expense categories (Rent/Utilities/Salaries & Wages/Supplies/Equipment & Maintenance/Marketing/Miscellaneous) seeded, `tsc -b` and `npm run build` clean.
+
 ## Phase 4 — Inventory (2026-09-22)
 
 - **Items & ledger**: `inventory_items` (retail/consumable/reusable_equipment/asset) has no stock or cost columns of its own — `inventory_transactions` is the single append-only source of truth (opening_balance/purchase/stock_in/service_consumption/retail_sale/adjustment_positive/adjustment_negative/damaged/expired/lost/returned/transfer/manual_correction). `record_inventory_transaction()` is the sole write path: it computes `previous_qty`/`new_qty` server-side under a `pg_advisory_xact_lock` per item, so concurrent writers can't race. `inventory_stock_levels` is a `security_invoker` view aggregating the ledger into on-hand/avg-cost/value per item.

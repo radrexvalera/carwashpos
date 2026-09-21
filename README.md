@@ -8,7 +8,7 @@ This README reflects what's actually implemented. See `CHANGELOG.md` for phase-b
 
 Built for a single-branch Philippine car wash (OtoKwikk / tenant "WashWash"), architected so a second branch or a second business can be added later without a schema rewrite — every table carries `tenant_id` (the business) and, where relevant, `location_id` (the branch).
 
-**Status**: Phases 1–4 of the new 8-phase roadmap are complete. Phase 1: multi-tenant RBAC, employee registry, vehicle-size/service-catalog taxonomy, business settings. Phase 2: the real job-based POS — Register (create a job), Job Queue (Kanban board), Collect Payment, and cashier shift management. Phase 3: commission rules, an append-only commission ledger computed when a job completes, an attendant "My Commission" dashboard, a manager-facing commission report, and payroll periods (generate → edit → lock → mark paid, with post-lock corrections as adjustment rows, never edits). Phase 4: a proper inventory ledger (items, categories, units, purchases, service recipes with auto-deduction on job completion, manual adjustments with a required reason), retail products sold through the same POS screen as services. The earlier, simpler ticket-based POS + bay board built before the roadmap pivot has been fully retired (deleted from the app; its database tables remain in Postgres, unused, along with the old `products`/`consumables`/`service_bom` tables which Phase 4 dropped outright).
+**Status**: Phases 1–5 of the new 8-phase roadmap are complete. Phase 1: multi-tenant RBAC, employee registry, vehicle-size/service-catalog taxonomy, business settings. Phase 2: the real job-based POS — Register (create a job), Job Queue (Kanban board), Collect Payment, and cashier shift management. Phase 3: commission rules, an append-only commission ledger computed when a job completes, an attendant "My Commission" dashboard, a manager-facing commission report, and payroll periods (generate → edit → lock → mark paid, with post-lock corrections as adjustment rows, never edits). Phase 4: a proper inventory ledger (items, categories, units, purchases, service recipes with auto-deduction on job completion, manual adjustments with a required reason), retail products sold through the same POS screen as services. Phase 5: operating-expense tracking (record/void, categorized), a sales report (revenue mix, top services, expenses by category), and a real owner dashboard (today's sales/expenses/net, pending commission, jobs on the floor, low-stock count). The earlier, simpler ticket-based POS + bay board built before the roadmap pivot has been fully retired (deleted from the app; its database tables remain in Postgres, unused, along with the old `products`/`consumables`/`service_bom` tables which Phase 4 dropped outright).
 
 ## Architecture
 
@@ -96,9 +96,13 @@ Payroll periods roll unclaimed commission into one entry per employee for a date
 
 Implemented (roadmap Phase 4, complete). `inventory_items` carries no stock/cost columns of its own — `inventory_transactions` is the single append-only ledger, and `record_inventory_transaction()` is the only write path (computes new balances server-side under a per-item advisory lock, never an overwritten running total). Purchases (`create_purchase_order()`) post a `stock_in` transaction per line; manual counts/corrections go through `adjust_inventory_stock()`, which requires the `can_manage_inventory` permission and a non-empty reason. Service recipes (`service_recipe_items`, optionally per vehicle size) auto-deduct on job-service completion inside the same transaction as commission — same idempotency guarantee as commission (a repeated completion is a no-op). Retail products are sold through the same Collect Payment screen as services, deducting stock via a `retail_sale` transaction.
 
+## Expenses & reporting
+
+Implemented (roadmap Phase 5, complete). `record_expense()`/`void_expense()` are the only write paths for `expenses`, gated by `can_manage_expenses` — a correction is a void with a required reason, never a row edit (a trigger blocks editing a recorded expense's financial fields directly). Reports (Sales Report, owner Dashboard) are queries over existing tables, not new base tables — no separate reporting schema.
+
 ## Known limitations
 
-- No expenses, promotions, or loyalty yet (roadmap Phases 5–6).
+- No promotions or loyalty yet (roadmap Phase 6).
 - No UI to set a custom commission split percentage at crew-assignment time.
 - No void/refund flow for a completed sale yet.
 - No low-stock alert surfaced outside the inventory items table itself (no dashboard widget/notification yet).
