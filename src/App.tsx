@@ -17,6 +17,9 @@ import { RegisterPage } from '@/features/jobs/RegisterPage'
 import { JobQueuePage } from '@/features/jobs/JobQueuePage'
 import { JobPaymentPage } from '@/features/jobs/JobPaymentPage'
 import { ShiftPage } from '@/features/shifts/ShiftPage'
+import { CommissionRulesPage } from '@/features/commission/CommissionRulesPage'
+import { CommissionReportPage } from '@/features/commission/CommissionReportPage'
+import { AttendantDashboardPage } from '@/features/commission/AttendantDashboardPage'
 
 export default function App() {
   return (
@@ -37,6 +40,23 @@ export default function App() {
               <Route path="/jobs" element={<JobQueuePage />} />
               <Route path="/jobs/:jobId/pay" element={<JobPaymentPage />} />
               <Route path="/shift" element={<ShiftPage />} />
+              <Route path="/my-commission" element={<AttendantDashboardPage />} />
+              <Route
+                path="/admin/commission-rules"
+                element={
+                  <RoleGuard allowedRoles={['admin', 'manager']}>
+                    <CommissionRulesPage />
+                  </RoleGuard>
+                }
+              />
+              <Route
+                path="/reports/commission"
+                element={
+                  <RoleGuard allowedRoles={['admin', 'manager']}>
+                    <CommissionReportPage />
+                  </RoleGuard>
+                }
+              />
               <Route
                 path="/admin/services"
                 element={

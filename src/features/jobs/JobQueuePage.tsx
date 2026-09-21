@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import type { BoardJob } from '@/lib/offline/types'
-import { updateJobStatus } from './api/jobStatusMutations'
+import { completeJobOffline, updateJobStatus } from './api/jobStatusMutations'
 import { useJobBoardSync } from './hooks/useJobBoardSync'
 
 const COLUMNS: { status: BoardJob['status']; label: string; next?: BoardJob['status'] }[] = [
@@ -71,15 +71,7 @@ export function JobQueuePage() {
   async function pickedUp(job: BoardJob) {
     if (!profile) return
     try {
-      await updateJobStatus({
-        tenantId: profile.tenantId,
-        boardJobId: job.id,
-        clientGeneratedId: job.clientGeneratedId,
-        status: 'completed',
-        bayId: null,
-        bayEnteredAt: null,
-        completedAt: new Date().toISOString(),
-      })
+      await completeJobOffline({ tenantId: profile.tenantId, boardJobId: job.id, jobId: job.id })
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to complete job')
     }

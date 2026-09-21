@@ -712,6 +712,55 @@ export interface Database {
         Update: never
         Relationships: []
       }
+      service_commission_rules: {
+        Row: {
+          id: string
+          tenant_id: string
+          service_id: string | null
+          commission_type: 'fixed_pool' | 'percentage' | 'fixed_per_attendant' | 'points'
+          rate: number
+          basis: 'original_price' | 'discounted_price'
+          is_active: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          service_id?: string | null
+          commission_type: 'fixed_pool' | 'percentage' | 'fixed_per_attendant' | 'points'
+          rate: number
+          basis?: 'original_price' | 'discounted_price'
+          is_active?: boolean
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['service_commission_rules']['Insert']>
+        Relationships: []
+      }
+      commission_ledger: {
+        Row: {
+          id: string
+          tenant_id: string
+          employee_id: string
+          job_id: string
+          job_service_id: string
+          service_id: string
+          gross_service_amount: number
+          commission_type: string
+          commission_rate: number
+          commission_amount: number
+          points: number | null
+          status: 'pending' | 'earned' | 'approved' | 'paid' | 'reversed' | 'adjusted'
+          payroll_period_id: string | null
+          paid_date: string | null
+          adjustment_reason: string | null
+          reverses_ledger_id: string | null
+          created_by: string
+          created_at: string
+        }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
     }
     Views: {
       ticket_board_entries: {
@@ -763,6 +812,10 @@ export interface Database {
       has_permission: {
         Args: { perm_key: string }
         Returns: boolean
+      }
+      complete_job: {
+        Args: { p_job_id: string }
+        Returns: Json
       }
       create_job: {
         Args: { payload: Json }

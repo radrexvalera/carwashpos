@@ -46,7 +46,7 @@ export type MutationStatus = 'pending' | 'syncing' | 'synced' | 'failed'
 export interface MutationQueueEntry {
   id: string
   tenantId: string
-  entity: 'ticket_complete' | 'ticket_status_update' | 'job_create' | 'job_status_update'
+  entity: 'ticket_complete' | 'ticket_status_update' | 'job_create' | 'job_status_update' | 'job_complete'
   clientGeneratedId: string
   payload: unknown
   createdAt: string

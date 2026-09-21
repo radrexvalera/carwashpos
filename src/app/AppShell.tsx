@@ -12,12 +12,15 @@ const navItems: { to: string; label: string; roles?: Role[] }[] = [
   { to: '/register', label: 'Register' },
   { to: '/jobs', label: 'Job Queue' },
   { to: '/shift', label: 'My Shift' },
+  { to: '/my-commission', label: 'My Commission' },
+  { to: '/reports/commission', label: 'Commission Report', roles: ['admin', 'manager'] },
   { to: '/admin/services', label: 'Services', roles: ['admin', 'manager'] },
   { to: '/admin/service-categories', label: 'Service Categories', roles: ['admin', 'manager'] },
   { to: '/admin/vehicle-sizes', label: 'Vehicle Sizes', roles: ['admin', 'manager'] },
   { to: '/admin/service-prices', label: 'Pricing', roles: ['admin', 'manager'] },
   { to: '/admin/bays', label: 'Bays', roles: ['admin', 'manager'] },
   { to: '/admin/employees', label: 'Employees', roles: ['admin', 'manager'] },
+  { to: '/admin/commission-rules', label: 'Commission Rules', roles: ['admin', 'manager'] },
   { to: '/admin/settings', label: 'Settings', roles: ['admin'] },
 ]
 

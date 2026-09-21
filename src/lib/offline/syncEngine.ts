@@ -87,6 +87,15 @@ export async function flushMutationQueue() {
           })
         }
 
+        if (mutation.entity === 'job_complete') {
+          const payload = mutation.payload as { job_id: string }
+          const { error } = await supabase.rpc('complete_job', { p_job_id: payload.job_id })
+          if (error) throw error
+          // Commission entries + job/job_service status all happen server-side inside
+          // complete_job(); the resulting change round-trips back through Realtime to update
+          // boardJobs, same as job_status_update.
+        }
+
         if (mutation.entity === 'job_status_update') {
           const payload = mutation.payload as {
             client_generated_id: string
