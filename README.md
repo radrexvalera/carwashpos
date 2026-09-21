@@ -8,7 +8,7 @@ This README reflects what's actually implemented. See `CHANGELOG.md` for phase-b
 
 Built for a single-branch Philippine car wash (OtoKwikk / tenant "WashWash"), architected so a second branch or a second business can be added later without a schema rewrite — every table carries `tenant_id` (the business) and, where relevant, `location_id` (the branch).
 
-**Status**: Phase 1 (Foundation) of the new 8-phase roadmap is complete: multi-tenant RBAC, employee registry, vehicle-size/service-catalog taxonomy, business settings. An earlier, simpler ticket-based POS + bay board (built before the roadmap pivot) still runs alongside this, unused by new work, until the roadmap's Phase 2 replaces it with a proper job/sale model.
+**Status**: Phases 1–2 of the new 8-phase roadmap are complete. Phase 1: multi-tenant RBAC, employee registry, vehicle-size/service-catalog taxonomy, business settings. Phase 2: the real job-based POS — Register (create a job), Job Queue (Kanban board), Collect Payment, and cashier shift management. The earlier, simpler ticket-based POS + bay board built before the roadmap pivot has been fully retired (deleted from the app; its database tables remain in Postgres, unused).
 
 ## Architecture
 
@@ -16,7 +16,8 @@ Built for a single-branch Philippine car wash (OtoKwikk / tenant "WashWash"), ar
 - **Backend**: Supabase — Postgres, Auth, Row-Level Security, Realtime. All business logic that must be atomic (pricing, stock/commission deltas, idempotent creation) lives in Postgres functions, never computed authoritatively on the client.
 - **Offline**: Dexie.js (IndexedDB) as a local read-cache for catalog data and an outbox (`mutation_queue`) for writes made while offline, synced via a background flush loop once reconnected. Client-generated UUIDs make retried syncs idempotent.
 - **Multi-tenant**: one Supabase project serves multiple businesses; every table is tenant-scoped via RLS policies checking `tenant_id = current_tenant_id()`.
-- **RBAC**: two layers exist today — a legacy `user_profiles.role` enum (admin/manager/cashier) that still drives the old ticket-POS tables' RLS, and a newer capability-based system (`roles`/`permissions`/`role_permissions`/`employee_roles`, checked via `has_permission('some_capability')`) that all new work uses. These will converge once the old ticket-POS tables are replaced.
+- **RBAC**: two layers exist today — a legacy `user_profiles.role` enum (admin/manager/cashier) that still drives some Phase 0 catalog tables' RLS, and the capability-based system (`roles`/`permissions`/`role_permissions`/`employee_roles`, checked via `has_permission('some_capability')`) that everything from Phase 1 onward uses, including all of Phase 2's jobs/sales/shifts.
+- **Jobs vs. sales are decoupled**: a job (the shop-floor unit of work) is created independent of payment; a sale can reference a job at any point in its lifecycle, or not at all (a pure retail sale). This avoids a pay-before/pay-after mode toggle — the cashier just chooses when to collect payment.
 
 ## Local development
 
@@ -33,7 +34,7 @@ Requires Node 20+.
 1. Create a project at [supabase.com](https://supabase.com).
 2. Install the Supabase CLI and link it: `supabase login`, then `supabase link --project-ref <your-project-ref>`.
 3. Apply migrations: `supabase db push`.
-4. Provision the first tenant + admin account yourself via the Supabase SQL editor — this app has no public self-serve signup (see `supabase/migrations/0001_init_schema.sql` for the schema, and insert a `tenants` row + a `user_profiles` row with `role='admin'` for a user you create under Authentication → Users).
+4. Provision the first tenant + admin account yourself via the Supabase SQL editor — this app has no public self-serve signup. Insert a `tenants` row (this seeds default roles/vehicle sizes/etc. via trigger), a `user_profiles` row with `role='admin'` for a user you create under Authentication → Users, and an `employees` row (`user_id` = that same auth user) with an `employee_roles` row linking it to the tenant's `admin` role — the capability-based RBAC that Phase 2 (jobs/sales/shifts) uses reads permissions through `employees`/`employee_roles`, not `user_profiles.role` alone.
 5. Copy your project's URL and anon key (Settings → API) into `.env`.
 
 ## Environment variables
@@ -73,10 +74,11 @@ Not yet configured. Target is Netlify or Vercel (static SPA build) once the app 
 
 ## Offline architecture
 
-- Catalog data (services, prices, vehicle sizes, products, bays) is cached in IndexedDB via Dexie and refreshed on login and reconnect, so the register can build a transaction without a network round-trip.
-- Writes go through a `mutation_queue` outbox: the UI never calls Supabase directly for a mutating action, it writes an optimistic local record and enqueues one coarse-grained mutation (e.g. "complete this ticket"), then a background sync engine flushes the queue on reconnect/interval.
+- Catalog data (services, prices, vehicle sizes, products, bays, employees, vehicles, customers) is cached in IndexedDB via Dexie and refreshed on login and reconnect, so the register can build a job offline without a network round-trip.
+- Writes go through a `mutation_queue` outbox: the UI never calls Supabase directly for a mutating action, it writes an optimistic local record and enqueues one coarse-grained mutation (e.g. "create this job"), then a background sync engine flushes the queue on reconnect/interval.
 - Every offline-created record carries a client-generated UUID as its idempotency key, so a retried sync (e.g. after a dropped response) is a safe no-op instead of a duplicate.
-- Server-side, any shared mutable value (stock, ticket numbering) is always updated via a relative delta inside a Postgres function, never an absolute value sent from the client — this is what makes two devices syncing concurrently safe without conflict-resolution logic.
+- Server-side, any shared mutable value (stock, job/ticket numbering) is always updated via a relative delta inside a Postgres function, never an absolute value sent from the client — this is what makes two devices syncing concurrently safe without conflict-resolution logic.
+- **Exception**: collecting payment (`create_sale`) is online-only. It needs real, already-synced `job_service` ids, and the job queue board only ever shows jobs that have already synced — so this isn't a practical offline gap, just a deliberate scope line for v1.
 
 ## User roles
 
@@ -94,8 +96,8 @@ Not implemented yet (roadmap Phase 4). The architecture plan calls for a proper 
 
 ## Known limitations
 
-- No jobs/POS/sales module yet under the new roadmap — the old ticket-based POS is a stand-in, disconnected from the new employee/RBAC system.
-- No commission, payroll, inventory, expenses, promotions, loyalty, or reporting yet.
+- No commission, payroll, inventory, expenses, promotions, loyalty, or reporting yet (roadmap Phases 3–6).
+- No void/refund flow for a completed sale yet.
 - No PWA/service worker (planned for roadmap Phase 7) — offline support today is the Dexie outbox only, not full installability/asset caching.
 - Not deployed anywhere yet.
 - This is an operational/management tool, not an accounting system — nothing here should be treated as BIR-compliant invoicing or statutory payroll unless and until those are explicitly built and validated.

@@ -2,6 +2,14 @@
 
 Major implementation changes, newest first. This tracks the new 8-phase roadmap (OtoKwikk Car Wash Management System); see the git history before 2026-09-21 for the earlier, since-superseded simple-POS build (Phases 0–2 of the original scope).
 
+## Phase 2 — Core Car Wash POS (2026-09-21)
+
+- **Customers/vehicles**: registered customers are optional (a walk-in vehicle has no `customer_id` at all); vehicle make/model are free text, never FKs — the make/model lookup is only a convenience default. No stored `total_visits`/`total_spend`/`last_visit`/`loyalty_points` on customers — derived from jobs/sales at read time instead of mutable counters that could drift.
+- **Jobs**: `jobs` / `job_services` / `job_service_attendants` / `job_status_history`. A job is the shop-floor unit of work, created independent of payment. Attendants are assigned per SERVICE LINE, not per job, so different crew can work different services on the same vehicle — this is what Phase 3's commission ledger will key off of. `create_job()` prices every service server-side and assigns a `JOB-YYYYMMDD-NNNN` number, atomically, with crew assignments.
+- **Sales/payments**: `sales` / `sale_items` / `payments`, plus `wash_bays` (renamed from `bays`), `cashier_shifts` / `cash_movements`. A sale is deliberately decoupled from job status — created whenever payment is collected, not gated by job completion — but requires an open shift. `create_sale()` bills job-service lines (with an optional checkout-time discount) or retail products, prevents double-billing the same job-service, and validates split payments. `close_shift()` computes expected cash from the actual sales/cash-movement ledger, never a client-supplied figure.
+- Frontend: the old ticket-based POS and bay board are **retired** (deleted, superseded) in favor of Register (job builder) → Job Queue (Kanban board, live via Realtime) → Collect Payment (reached from an unpaid job card) → My Shift. Payment collection is online-only by design; job creation and shop-floor status updates remain offline-capable via the same outbox pattern as before.
+- All backend logic verified end-to-end via SQL under real RLS enforcement (not the `postgres`-role bypass `db query` normally runs as): shift → job → crew assignment → split-payment sale → double-bill rejection → cash reconciliation.
+
 ## Phase 1 — Foundation (2026-09-21)
 
 - **RBAC**: capability-based `permissions` / `roles` / `role_permissions` / `employee_roles`, plus a `has_permission()` RLS helper. Additive alongside the existing `user_profiles.role` mechanism, which still drives the old Phase 0–2 tables untouched.
