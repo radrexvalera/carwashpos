@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase/client'
 import type { Database, Json } from '@/lib/supabase/types'
 
 type TicketStatus = Database['public']['Tables']['tickets']['Row']['status']
+type JobStatus = Database['public']['Tables']['jobs']['Row']['status']
 
 const MAX_RETRIES = 5
 let flushing = false
@@ -71,6 +72,41 @@ export async function flushMutationQueue() {
           // periodic refresh) to update boardTickets -- no local patch needed here.
         }
 
+        if (mutation.entity === 'job_create') {
+          const { data, error } = await supabase.rpc('create_job', { payload: mutation.payload as Json })
+          if (error) throw error
+
+          const result = data as { id: string; job_number: string; status: string; created_at: string }
+
+          await db.jobs.update(mutation.clientGeneratedId, {
+            id: result.id,
+            jobNumber: result.job_number,
+            status: result.status,
+            syncStatus: 'synced',
+            syncError: undefined,
+          })
+        }
+
+        if (mutation.entity === 'job_status_update') {
+          const payload = mutation.payload as {
+            client_generated_id: string
+            status: JobStatus
+            bay_id: string | null
+            bay_entered_at: string | null
+            completed_at: string | null
+          }
+          const { error } = await supabase
+            .from('jobs')
+            .update({
+              status: payload.status,
+              bay_id: payload.bay_id,
+              bay_entered_at: payload.bay_entered_at,
+              completed_at: payload.completed_at,
+            })
+            .eq('client_generated_id', payload.client_generated_id)
+          if (error) throw error
+        }
+
         await db.mutationQueue.update(mutation.id, { status: 'synced' })
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
@@ -85,6 +121,13 @@ export async function flushMutationQueue() {
 
         if (mutation.entity === 'ticket_complete') {
           await db.tickets.update(mutation.clientGeneratedId, {
+            syncStatus: failed ? 'failed' : 'pending',
+            syncError: message,
+          })
+        }
+
+        if (mutation.entity === 'job_create') {
+          await db.jobs.update(mutation.clientGeneratedId, {
             syncStatus: failed ? 'failed' : 'pending',
             syncError: message,
           })

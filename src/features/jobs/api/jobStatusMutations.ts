@@ -1,21 +1,21 @@
 import { db } from '@/lib/db/dexie'
 import { flushMutationQueue } from '@/lib/offline/syncEngine'
 
-interface UpdateTicketStatusInput {
+interface UpdateJobStatusInput {
   tenantId: string
-  boardTicketId: string
+  boardJobId: string
   clientGeneratedId: string
-  status: 'waiting' | 'in_bay' | 'ready_for_pickup' | 'picked_up_paid'
+  status: 'waiting' | 'washing' | 'detailing' | 'quality_check' | 'ready_for_release' | 'completed'
   bayId: string | null
   bayEnteredAt: string | null
   completedAt: string | null
 }
 
-// Status transitions go through the same offline outbox as ticket creation -- a bay doesn't stop
-// working because Wi-Fi drops. Referenced by client_generated_id (not the server id) so this works
-// even for a ticket that hasn't finished its own initial sync yet.
-export async function updateTicketStatus(input: UpdateTicketStatusInput) {
-  await db.boardTickets.update(input.boardTicketId, {
+// Same offline-outbox pattern as the old bay board's ticket status updates -- a job's shop-floor
+// status shouldn't depend on connectivity. Referenced by client_generated_id so it works even for
+// a job that hasn't finished its own initial sync.
+export async function updateJobStatus(input: UpdateJobStatusInput) {
+  await db.boardJobs.update(input.boardJobId, {
     status: input.status,
     bayId: input.bayId,
     bayEnteredAt: input.bayEnteredAt,
@@ -25,7 +25,7 @@ export async function updateTicketStatus(input: UpdateTicketStatusInput) {
   await db.mutationQueue.add({
     id: crypto.randomUUID(),
     tenantId: input.tenantId,
-    entity: 'ticket_status_update',
+    entity: 'job_status_update',
     clientGeneratedId: input.clientGeneratedId,
     payload: {
       client_generated_id: input.clientGeneratedId,

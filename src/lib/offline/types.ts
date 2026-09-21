@@ -46,7 +46,7 @@ export type MutationStatus = 'pending' | 'syncing' | 'synced' | 'failed'
 export interface MutationQueueEntry {
   id: string
   tenantId: string
-  entity: 'ticket_complete' | 'ticket_status_update'
+  entity: 'ticket_complete' | 'ticket_status_update' | 'job_create' | 'job_status_update'
   clientGeneratedId: string
   payload: unknown
   createdAt: string
@@ -55,6 +55,63 @@ export interface MutationQueueEntry {
   status: MutationStatus
   lastError?: string
   sequence: number
+}
+
+// A job's services are priced/created server-side (create_job()) -- this local shape is what the
+// POS optimistically shows before sync confirms it, same "coarse-grained mutation" principle as
+// LocalTicket.
+export interface LocalJobServiceLine {
+  serviceId: string
+  serviceName: string
+  unitPrice: number
+  quantity: number
+  lineTotal: number
+  attendantEmployeeIds: string[]
+  attendantNames: string[]
+}
+
+export type JobSyncStatus = 'pending' | 'syncing' | 'synced' | 'failed'
+
+export interface LocalJob {
+  clientGeneratedId: string
+  tenantId: string
+  id?: string
+  jobNumber?: string
+  status: string
+  vehicleId: string
+  vehiclePlate: string
+  vehicleMake: string | null
+  vehicleModel: string | null
+  vehicleSizeId: string
+  vehicleSizeName: string
+  services: LocalJobServiceLine[]
+  estimatedTotal: number
+  createdAt: string
+  syncStatus: JobSyncStatus
+  syncError?: string
+}
+
+// Read-cache mirror of the job_board_entries view -- ALL open jobs tenant-wide, refreshed via
+// Realtime + polling, same role as BoardTicket played for the old ticket-based board.
+export interface BoardJob {
+  id: string
+  tenantId: string
+  clientGeneratedId: string
+  jobNumber: string
+  status: string
+  bayId: string | null
+  bayName: string | null
+  bayEnteredAt: string | null
+  createdAt: string
+  completedAt: string | null
+  plateNumber: string
+  vehicleMake: string | null
+  vehicleModel: string | null
+  vehicleSizeName: string
+  estimatedTotal: number
+  servicesSummary: string | null
+  attendantsSummary: string | null
+  isPaid: boolean
 }
 
 // Read-cache mirror of the ticket_board_entries view (Phase 2) -- refreshed via Realtime + polling,

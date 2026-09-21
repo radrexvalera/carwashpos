@@ -1,6 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie'
 import type { Database } from '@/lib/supabase/types'
-import type { BoardTicket, LocalTicket, MutationQueueEntry } from '@/lib/offline/types'
+import type { BoardJob, BoardTicket, LocalJob, LocalTicket, MutationQueueEntry } from '@/lib/offline/types'
 
 // Read-cache tables: mirrors of Supabase catalog data, refreshed on reconnect, never locally
 // mutated. The POS (Phase 1) reads services/prices/products/consumables from here so it keeps
@@ -11,9 +11,12 @@ type ServiceCategoryRow = Database['public']['Tables']['service_categories']['Ro
 type ServicePriceRow = Database['public']['Tables']['service_prices']['Row']
 type ProductRow = Database['public']['Tables']['products']['Row']
 type ConsumableRow = Database['public']['Tables']['consumables']['Row']
-type BayRow = Database['public']['Tables']['bays']['Row']
+type BayRow = Database['public']['Tables']['wash_bays']['Row']
 type VehicleMakeRow = Database['public']['Tables']['vehicle_makes']['Row']
 type VehicleModelRow = Database['public']['Tables']['vehicle_models']['Row']
+type EmployeeRow = Database['public']['Tables']['employees']['Row']
+type VehicleRow = Database['public']['Tables']['vehicles']['Row']
+type CustomerRow = Database['public']['Tables']['customers']['Row']
 
 class CarWashDB extends Dexie {
   vehicleSizes!: EntityTable<VehicleSizeRow, 'id'>
@@ -25,17 +28,21 @@ class CarWashDB extends Dexie {
   bays!: EntityTable<BayRow, 'id'>
   vehicleMakes!: EntityTable<VehicleMakeRow, 'id'>
   vehicleModels!: EntityTable<VehicleModelRow, 'id'>
+  employees!: EntityTable<EmployeeRow, 'id'>
+  vehicles!: EntityTable<VehicleRow, 'id'>
+  customers!: EntityTable<CustomerRow, 'id'>
 
-  // Outbox-backed: local optimistic tickets (keyed by the client-generated id, stable across the
-  // whole offline -> synced lifecycle) and the mutation queue that actually drives syncing them.
+  // Outbox-backed: local optimistic tickets/jobs (keyed by the client-generated id, stable across
+  // the whole offline -> synced lifecycle) and the mutation queue that actually drives syncing them.
   tickets!: EntityTable<LocalTicket, 'clientGeneratedId'>
+  jobs!: EntityTable<LocalJob, 'clientGeneratedId'>
   mutationQueue!: EntityTable<MutationQueueEntry, 'id'>
 
-  // Read-cache mirror of the ticket_board_entries view (Phase 2) -- ALL open tickets tenant-wide,
-  // not just ones this device created. Keyed by the server id since it's populated from server
-  // reads; boardTickets.clientGeneratedId is still indexed so a status-update mutation can find
-  // the row it should patch.
+  // Read-cache mirrors of the board views -- ALL open tickets/jobs tenant-wide, not just ones this
+  // device created. Keyed by the server id since populated from server reads; clientGeneratedId is
+  // still indexed so a status-update mutation can find the row it should patch.
   boardTickets!: EntityTable<BoardTicket, 'id'>
+  boardJobs!: EntityTable<BoardJob, 'id'>
 
   constructor() {
     super('carwash-pos')
@@ -68,6 +75,16 @@ class CarWashDB extends Dexie {
       servicePrices: 'id, tenant_id, service_id, vehicle_size_id',
       vehicleMakes: 'id, tenant_id',
       vehicleModels: 'id, tenant_id, make_id',
+    })
+
+    // Phase 2 (new roadmap): job-based POS + queue board, alongside employees for the crew-
+    // assignment picker.
+    this.version(5).stores({
+      employees: 'id, tenant_id, active',
+      jobs: 'clientGeneratedId, tenantId, status, syncStatus, createdAt',
+      boardJobs: 'id, tenantId, clientGeneratedId, status, bayId',
+      vehicles: 'id, tenant_id, plate_number, customer_id',
+      customers: 'id, tenant_id, mobile',
     })
   }
 }

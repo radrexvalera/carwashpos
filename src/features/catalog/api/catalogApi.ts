@@ -5,7 +5,7 @@ type VehicleSize = Database['public']['Tables']['vehicle_sizes']['Row']
 type ServiceCategory = Database['public']['Tables']['service_categories']['Row']
 type Service = Database['public']['Tables']['services']['Row']
 type ServicePrice = Database['public']['Tables']['service_prices']['Row']
-type Bay = Database['public']['Tables']['bays']['Row']
+type Bay = Database['public']['Tables']['wash_bays']['Row']
 type Location = Database['public']['Tables']['locations']['Row']
 
 export async function listVehicleSizes() {
@@ -105,7 +105,7 @@ export async function listLocations() {
 }
 
 export async function listBays() {
-  const { data, error } = await supabase.from('bays').select('*').order('sort_order', { ascending: true })
+  const { data, error } = await supabase.from('wash_bays').select('*').order('sort_order', { ascending: true })
   if (error) throw error
   return data
 }
@@ -116,7 +116,7 @@ export async function createBay(input: {
   name: string
   sortOrder: number
 }) {
-  const { error } = await supabase.from('bays').insert({
+  const { error } = await supabase.from('wash_bays').insert({
     tenant_id: input.tenantId,
     location_id: input.locationId,
     name: input.name,
@@ -126,7 +126,7 @@ export async function createBay(input: {
 }
 
 export async function setBayActive(id: string, isActive: boolean) {
-  const { error } = await supabase.from('bays').update({ is_active: isActive }).eq('id', id)
+  const { error } = await supabase.from('wash_bays').update({ is_active: isActive }).eq('id', id)
   if (error) throw error
 }
 

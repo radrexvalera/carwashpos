@@ -11,11 +11,12 @@ import { ServiceCategoriesPage } from '@/features/catalog/ServiceCategoriesPage'
 import { VehicleSizesPage } from '@/features/catalog/VehicleSizesPage'
 import { ServicePricesPage } from '@/features/catalog/ServicePricesPage'
 import { BaysPage } from '@/features/catalog/BaysPage'
-import { PosPage } from '@/features/pos/PosPage'
-import { ReceiptPage } from '@/features/pos/ReceiptPage'
-import { BayBoardPage } from '@/features/bay-board/BayBoardPage'
 import { EmployeesPage } from '@/features/employees/EmployeesPage'
 import { SettingsPage } from '@/features/settings/SettingsPage'
+import { RegisterPage } from '@/features/jobs/RegisterPage'
+import { JobQueuePage } from '@/features/jobs/JobQueuePage'
+import { JobPaymentPage } from '@/features/jobs/JobPaymentPage'
+import { ShiftPage } from '@/features/shifts/ShiftPage'
 
 export default function App() {
   return (
@@ -32,9 +33,10 @@ export default function App() {
               }
             >
               <Route path="/" element={<DashboardPage />} />
-              <Route path="/pos" element={<PosPage />} />
-              <Route path="/receipt/:clientGeneratedId" element={<ReceiptPage />} />
-              <Route path="/bay-board" element={<BayBoardPage />} />
+              <Route path="/register" element={<RegisterPage />} />
+              <Route path="/jobs" element={<JobQueuePage />} />
+              <Route path="/jobs/:jobId/pay" element={<JobPaymentPage />} />
+              <Route path="/shift" element={<ShiftPage />} />
               <Route
                 path="/admin/services"
                 element={

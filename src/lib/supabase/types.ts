@@ -370,7 +370,7 @@ export interface Database {
         Update: Partial<Database['public']['Tables']['service_bom']['Insert']>
         Relationships: []
       }
-      bays: {
+      wash_bays: {
         Row: {
           id: string
           tenant_id: string
@@ -389,7 +389,7 @@ export interface Database {
           is_active?: boolean
           created_at?: string
         }
-        Update: Partial<Database['public']['Tables']['bays']['Insert']>
+        Update: Partial<Database['public']['Tables']['wash_bays']['Insert']>
         Relationships: []
       }
       tickets: {
@@ -456,6 +456,262 @@ export interface Database {
         Update: never
         Relationships: []
       }
+      customers: {
+        Row: {
+          id: string
+          tenant_id: string
+          customer_type: 'individual' | 'company'
+          full_name: string
+          mobile: string | null
+          email: string | null
+          address: string | null
+          notes: string | null
+          is_active: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          customer_type?: 'individual' | 'company'
+          full_name: string
+          mobile?: string | null
+          email?: string | null
+          address?: string | null
+          notes?: string | null
+          is_active?: boolean
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['customers']['Insert']>
+        Relationships: []
+      }
+      vehicles: {
+        Row: {
+          id: string
+          tenant_id: string
+          customer_id: string | null
+          plate_number: string
+          make: string | null
+          model: string | null
+          year: number | null
+          color: string | null
+          vehicle_type: string | null
+          vehicle_size_id: string | null
+          notes: string | null
+          is_active: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          customer_id?: string | null
+          plate_number: string
+          make?: string | null
+          model?: string | null
+          year?: number | null
+          color?: string | null
+          vehicle_type?: string | null
+          vehicle_size_id?: string | null
+          notes?: string | null
+          is_active?: boolean
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['vehicles']['Insert']>
+        Relationships: []
+      }
+      jobs: {
+        Row: {
+          id: string
+          tenant_id: string
+          location_id: string
+          client_generated_id: string
+          job_number: string
+          vehicle_id: string
+          vehicle_size_id: string
+          bay_id: string | null
+          status: 'waiting' | 'washing' | 'detailing' | 'quality_check' | 'ready_for_release' | 'completed' | 'cancelled'
+          bay_entered_at: string | null
+          completed_at: string | null
+          cancelled_at: string | null
+          cancel_reason: string | null
+          created_by: string
+          created_at: string
+        }
+        Insert: never
+        Update: {
+          status?: Database['public']['Tables']['jobs']['Row']['status']
+          bay_id?: string | null
+          bay_entered_at?: string | null
+          completed_at?: string | null
+          cancelled_at?: string | null
+          cancel_reason?: string | null
+        }
+        Relationships: []
+      }
+      job_services: {
+        Row: {
+          id: string
+          tenant_id: string
+          job_id: string
+          service_id: string
+          unit_price: number
+          quantity: number
+          discount_amount: number
+          line_total: number
+          status: 'pending' | 'in_progress' | 'completed' | 'cancelled'
+          started_at: string | null
+          completed_at: string | null
+          created_at: string
+        }
+        Insert: never
+        Update: {
+          status?: Database['public']['Tables']['job_services']['Row']['status']
+          started_at?: string | null
+          completed_at?: string | null
+        }
+        Relationships: []
+      }
+      job_service_attendants: {
+        Row: {
+          id: string
+          tenant_id: string
+          job_service_id: string
+          employee_id: string
+          role_in_job: string | null
+          split_percentage: number | null
+          created_at: string
+        }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
+      job_status_history: {
+        Row: {
+          id: string
+          tenant_id: string
+          job_id: string
+          from_status: string | null
+          to_status: string
+          changed_by: string
+          changed_at: string
+          note: string | null
+        }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
+      cashier_shifts: {
+        Row: {
+          id: string
+          tenant_id: string
+          location_id: string
+          cashier_id: string
+          opened_at: string
+          opening_float: number
+          closed_at: string | null
+          expected_cash: number | null
+          counted_cash: number | null
+          variance: number | null
+          variance_reason: string | null
+          status: 'open' | 'closed'
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          location_id: string
+          cashier_id: string
+          opened_at?: string
+          opening_float?: number
+        }
+        Update: never
+        Relationships: []
+      }
+      cash_movements: {
+        Row: {
+          id: string
+          tenant_id: string
+          shift_id: string
+          type: 'cash_in' | 'cash_out'
+          amount: number
+          category: string
+          reason: string | null
+          created_by: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          shift_id: string
+          type: 'cash_in' | 'cash_out'
+          amount: number
+          category: string
+          reason?: string | null
+          created_by: string
+          created_at?: string
+        }
+        Update: never
+        Relationships: []
+      }
+      sales: {
+        Row: {
+          id: string
+          tenant_id: string
+          location_id: string
+          client_generated_id: string
+          sale_number: string
+          job_id: string | null
+          shift_id: string
+          subtotal: number
+          discount_total: number
+          tax_total: number
+          total: number
+          status: 'completed' | 'voided' | 'refunded'
+          created_by: string
+          created_at: string
+          voided_by: string | null
+          voided_at: string | null
+          void_reason: string | null
+          refunded_by: string | null
+          refunded_at: string | null
+          refund_reason: string | null
+        }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
+      sale_items: {
+        Row: {
+          id: string
+          tenant_id: string
+          sale_id: string
+          line_type: 'job_service' | 'product'
+          job_service_id: string | null
+          product_id: string | null
+          description: string
+          unit_price: number
+          quantity: number
+          discount_amount: number
+          line_total: number
+          created_at: string
+        }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
+      payments: {
+        Row: {
+          id: string
+          tenant_id: string
+          sale_id: string
+          method: 'cash' | 'gcash' | 'maya' | 'bank_transfer' | 'card'
+          amount: number
+          reference_note: string | null
+          paid_at: string
+          recorded_by: string
+        }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
     }
     Views: {
       ticket_board_entries: {
@@ -475,6 +731,29 @@ export interface Database {
         }
         Relationships: []
       }
+      job_board_entries: {
+        Row: {
+          id: string
+          tenant_id: string
+          client_generated_id: string
+          job_number: string
+          status: Database['public']['Tables']['jobs']['Row']['status']
+          bay_id: string | null
+          bay_name: string | null
+          bay_entered_at: string | null
+          created_at: string
+          completed_at: string | null
+          plate_number: string
+          vehicle_make: string | null
+          vehicle_model: string | null
+          vehicle_size_name: string
+          estimated_total: number
+          services_summary: string | null
+          attendants_summary: string | null
+          is_paid: boolean
+        }
+        Relationships: []
+      }
     }
     Functions: {
       complete_ticket: {
@@ -484,6 +763,22 @@ export interface Database {
       has_permission: {
         Args: { perm_key: string }
         Returns: boolean
+      }
+      create_job: {
+        Args: { payload: Json }
+        Returns: Json
+      }
+      create_sale: {
+        Args: { payload: Json }
+        Returns: Json
+      }
+      close_shift: {
+        Args: { p_shift_id: string; p_counted_cash: number; p_variance_reason?: string }
+        Returns: Json
+      }
+      current_employee_id: {
+        Args: Record<string, never>
+        Returns: string
       }
     }
     Enums: Record<string, never>
