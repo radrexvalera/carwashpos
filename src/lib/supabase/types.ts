@@ -475,6 +475,48 @@ export interface Database {
         Update: Partial<Database['public']['Tables']['service_recipe_items']['Insert']>
         Relationships: []
       }
+      expense_categories: {
+        Row: {
+          id: string
+          tenant_id: string
+          name: string
+          sort_order: number
+          is_active: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          name: string
+          sort_order?: number
+          is_active?: boolean
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['expense_categories']['Insert']>
+        Relationships: []
+      }
+      expenses: {
+        Row: {
+          id: string
+          tenant_id: string
+          category_id: string
+          description: string
+          amount: number
+          expense_date: string
+          payment_method: 'cash' | 'gcash' | 'maya' | 'bank_transfer' | 'card'
+          paid_to: string | null
+          reference_note: string | null
+          is_voided: boolean
+          voided_by: string | null
+          voided_at: string | null
+          void_reason: string | null
+          created_by: string
+          created_at: string
+        }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
       wash_bays: {
         Row: {
           id: string
@@ -1047,6 +1089,14 @@ export interface Database {
       create_purchase_order: {
         Args: { payload: Json }
         Returns: Json
+      }
+      record_expense: {
+        Args: { payload: Json }
+        Returns: Json
+      }
+      void_expense: {
+        Args: { p_expense_id: string; p_reason: string }
+        Returns: undefined
       }
     }
     Enums: Record<string, never>

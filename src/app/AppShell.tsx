@@ -14,7 +14,9 @@ const navItems: { to: string; label: string; roles?: Role[] }[] = [
   { to: '/shift', label: 'My Shift' },
   { to: '/my-commission', label: 'My Commission' },
   { to: '/reports/commission', label: 'Commission Report', roles: ['admin', 'manager'] },
+  { to: '/reports/sales', label: 'Sales Report', roles: ['admin', 'manager'] },
   { to: '/payroll', label: 'Payroll', roles: ['admin', 'manager'] },
+  { to: '/expenses', label: 'Expenses', roles: ['admin', 'manager'] },
   { to: '/admin/services', label: 'Services', roles: ['admin', 'manager'] },
   { to: '/admin/service-categories', label: 'Service Categories', roles: ['admin', 'manager'] },
   { to: '/admin/vehicle-sizes', label: 'Vehicle Sizes', roles: ['admin', 'manager'] },
@@ -28,6 +30,7 @@ const navItems: { to: string; label: string; roles?: Role[] }[] = [
   { to: '/admin/service-recipes', label: 'Service Recipes', roles: ['admin', 'manager'] },
   { to: '/admin/inventory-categories', label: 'Inventory Categories', roles: ['admin', 'manager'] },
   { to: '/admin/inventory-units', label: 'Inventory Units', roles: ['admin', 'manager'] },
+  { to: '/admin/expense-categories', label: 'Expense Categories', roles: ['admin', 'manager'] },
   { to: '/admin/settings', label: 'Settings', roles: ['admin'] },
 ]
 
