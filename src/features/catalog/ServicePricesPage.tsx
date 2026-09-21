@@ -7,17 +7,17 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import {
   listServicePrices,
   listServices,
-  listVehicleSizeClasses,
+  listVehicleSizes,
   upsertServicePrice,
   type Service,
   type ServicePrice,
-  type VehicleSizeClass,
+  type VehicleSize,
 } from './api/catalogApi'
 
 export function ServicePricesPage() {
   const { profile } = useTenant()
   const [services, setServices] = useState<Service[]>([])
-  const [sizeClasses, setSizeClasses] = useState<VehicleSizeClass[]>([])
+  const [sizes, setSizes] = useState<VehicleSize[]>([])
   const [prices, setPrices] = useState<ServicePrice[]>([])
   const [loading, setLoading] = useState(true)
   const [savingKey, setSavingKey] = useState<string | null>(null)
@@ -25,13 +25,13 @@ export function ServicePricesPage() {
   async function reload() {
     setLoading(true)
     try {
-      const [servicesData, sizeClassesData, pricesData] = await Promise.all([
+      const [servicesData, sizesData, pricesData] = await Promise.all([
         listServices(),
-        listVehicleSizeClasses(),
+        listVehicleSizes(),
         listServicePrices(),
       ])
       setServices(servicesData.filter((s) => s.is_active))
-      setSizeClasses(sizeClassesData.filter((c) => c.is_active))
+      setSizes(sizesData.filter((c) => c.is_active))
       setPrices(pricesData)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to load pricing')
@@ -46,19 +46,19 @@ export function ServicePricesPage() {
 
   const priceMap = useMemo(() => {
     const map = new Map<string, ServicePrice>()
-    for (const p of prices) map.set(`${p.service_id}:${p.vehicle_size_class_id}`, p)
+    for (const p of prices) map.set(`${p.service_id}:${p.vehicle_size_id}`, p)
     return map
   }, [prices])
 
-  async function handlePriceChange(serviceId: string, vehicleSizeClassId: string, value: string) {
+  async function handlePriceChange(serviceId: string, vehicleSizeId: string, value: string) {
     if (!profile) return
-    const key = `${serviceId}:${vehicleSizeClassId}`
+    const key = `${serviceId}:${vehicleSizeId}`
     const price = Number(value)
     if (Number.isNaN(price) || price < 0) return
 
     setSavingKey(key)
     try {
-      await upsertServicePrice({ tenantId: profile.tenantId, serviceId, vehicleSizeClassId, price })
+      await upsertServicePrice({ tenantId: profile.tenantId, serviceId, vehicleSizeId, price })
       await reload()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to save price')
@@ -72,19 +72,19 @@ export function ServicePricesPage() {
       <div>
         <h1 className="text-2xl font-semibold">Pricing</h1>
         <p className="text-muted-foreground">
-          Set the price for each service at each vehicle size independently — prices don't have to
-          scale proportionally between sizes.
+          Set the price for each service at each vehicle size independently. Leave a cell blank if
+          a service doesn't apply to that size (e.g. Tint doesn't apply to motorcycles).
         </p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Price matrix</CardTitle>
+          <CardTitle>Price matrix (₱)</CardTitle>
         </CardHeader>
         <CardContent>
-          {services.length === 0 || sizeClasses.length === 0 ? (
+          {services.length === 0 || sizes.length === 0 ? (
             <p className="text-muted-foreground">
-              {loading ? 'Loading…' : 'Add at least one active service and vehicle size class first.'}
+              {loading ? 'Loading…' : 'Add at least one active service and vehicle size first.'}
             </p>
           ) : (
             <div className="overflow-x-auto">
@@ -92,8 +92,8 @@ export function ServicePricesPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Service</TableHead>
-                    {sizeClasses.map((sc) => (
-                      <TableHead key={sc.id}>{sc.name}</TableHead>
+                    {sizes.map((sz) => (
+                      <TableHead key={sz.id}>{sz.name}</TableHead>
                     ))}
                   </TableRow>
                 </TableHeader>
@@ -101,11 +101,11 @@ export function ServicePricesPage() {
                   {services.map((service) => (
                     <TableRow key={service.id}>
                       <TableCell className="font-medium">{service.name}</TableCell>
-                      {sizeClasses.map((sc) => {
-                        const key = `${service.id}:${sc.id}`
+                      {sizes.map((sz) => {
+                        const key = `${service.id}:${sz.id}`
                         const existing = priceMap.get(key)
                         return (
-                          <TableCell key={sc.id}>
+                          <TableCell key={sz.id}>
                             <Input
                               type="number"
                               step="0.01"
@@ -115,7 +115,7 @@ export function ServicePricesPage() {
                               placeholder="—"
                               disabled={savingKey === key}
                               onBlur={(e) => {
-                                if (e.target.value !== '') handlePriceChange(service.id, sc.id, e.target.value)
+                                if (e.target.value !== '') handlePriceChange(service.id, sz.id, e.target.value)
                               }}
                             />
                           </TableCell>

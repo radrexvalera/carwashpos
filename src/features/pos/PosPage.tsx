@@ -19,7 +19,7 @@ export function PosPage() {
   const navigate = useNavigate()
 
   const sizeClasses = useLiveQuery(
-    () => db.vehicleSizeClasses.where('tenant_id').equals(profile?.tenantId ?? '').and((c) => c.is_active).sortBy('sort_order'),
+    () => db.vehicleSizes.where('tenant_id').equals(profile?.tenantId ?? '').and((c) => c.is_active).sortBy('sort_order'),
     [profile?.tenantId],
     [],
   )
@@ -48,7 +48,7 @@ export function PosPage() {
   const priceFor = useMemo(() => {
     const map = new Map<string, number>()
     for (const p of servicePrices ?? []) {
-      if (p.is_active) map.set(`${p.service_id}:${p.vehicle_size_class_id}`, p.price)
+      if (p.is_active) map.set(`${p.service_id}:${p.vehicle_size_id}`, p.price)
     }
     return map
   }, [servicePrices])

@@ -12,9 +12,12 @@ const navItems: { to: string; label: string; roles?: Role[] }[] = [
   { to: '/pos', label: 'Register' },
   { to: '/bay-board', label: 'Bay Board' },
   { to: '/admin/services', label: 'Services', roles: ['admin', 'manager'] },
-  { to: '/admin/vehicle-size-classes', label: 'Vehicle Sizes', roles: ['admin', 'manager'] },
+  { to: '/admin/service-categories', label: 'Service Categories', roles: ['admin', 'manager'] },
+  { to: '/admin/vehicle-sizes', label: 'Vehicle Sizes', roles: ['admin', 'manager'] },
   { to: '/admin/service-prices', label: 'Pricing', roles: ['admin', 'manager'] },
   { to: '/admin/bays', label: 'Bays', roles: ['admin', 'manager'] },
+  { to: '/admin/employees', label: 'Employees', roles: ['admin', 'manager'] },
+  { to: '/admin/settings', label: 'Settings', roles: ['admin'] },
 ]
 
 export function AppShell() {

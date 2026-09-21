@@ -1,7 +1,7 @@
-// Hand-written to match supabase/migrations/0001_init_schema.sql until the project is linked to a
-// real Supabase instance. Once it is, regenerate this file from the source of truth with:
+// Hand-written to match the migrations in supabase/migrations/. Once the Supabase CLI's local
+// shadow-db workflow is usable in this environment, regenerate via:
 //   npx supabase gen types typescript --linked > src/lib/supabase/types.ts
-// Re-run that after every new migration (Phase 1+ will add tickets, shifts, promotions, etc.).
+// Re-run that after every new migration.
 
 export type Role = 'admin' | 'manager' | 'cashier'
 
@@ -64,7 +64,107 @@ export interface Database {
         Update: Partial<Database['public']['Tables']['user_profiles']['Insert']>
         Relationships: []
       }
-      vehicle_size_classes: {
+      permissions: {
+        Row: { key: string; description: string }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
+      roles: {
+        Row: {
+          id: string
+          tenant_id: string
+          key: string
+          name: string
+          is_system: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          key: string
+          name: string
+          is_system?: boolean
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['roles']['Insert']>
+        Relationships: []
+      }
+      role_permissions: {
+        Row: { role_id: string; permission_key: string }
+        Insert: { role_id: string; permission_key: string }
+        Update: never
+        Relationships: []
+      }
+      employee_roles: {
+        Row: { employee_id: string; role_id: string }
+        Insert: { employee_id: string; role_id: string }
+        Update: never
+        Relationships: []
+      }
+      employees: {
+        Row: {
+          id: string
+          tenant_id: string
+          user_id: string | null
+          employee_code: string | null
+          full_name: string
+          nickname: string | null
+          mobile: string | null
+          hire_date: string | null
+          employment_status: 'active' | 'inactive' | 'terminated'
+          active: boolean
+          notes: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          user_id?: string | null
+          employee_code?: string | null
+          full_name: string
+          nickname?: string | null
+          mobile?: string | null
+          hire_date?: string | null
+          employment_status?: 'active' | 'inactive' | 'terminated'
+          active?: boolean
+          notes?: string | null
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['employees']['Insert']>
+        Relationships: []
+      }
+      settings: {
+        Row: {
+          tenant_id: string
+          business_name: string
+          address: string | null
+          contact_phone: string | null
+          contact_email: string | null
+          currency: string
+          timezone: string
+          receipt_header: string | null
+          receipt_footer: string | null
+          numbering_prefix: string
+          updated_at: string
+        }
+        Insert: {
+          tenant_id: string
+          business_name?: string
+          address?: string | null
+          contact_phone?: string | null
+          contact_email?: string | null
+          currency?: string
+          timezone?: string
+          receipt_header?: string | null
+          receipt_footer?: string | null
+          numbering_prefix?: string
+          updated_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['settings']['Insert']>
+        Relationships: []
+      }
+      vehicle_sizes: {
         Row: {
           id: string
           tenant_id: string
@@ -81,7 +181,69 @@ export interface Database {
           is_active?: boolean
           created_at?: string
         }
-        Update: Partial<Database['public']['Tables']['vehicle_size_classes']['Insert']>
+        Update: Partial<Database['public']['Tables']['vehicle_sizes']['Insert']>
+        Relationships: []
+      }
+      vehicle_makes: {
+        Row: {
+          id: string
+          tenant_id: string
+          name: string
+          is_active: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          name: string
+          is_active?: boolean
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['vehicle_makes']['Insert']>
+        Relationships: []
+      }
+      vehicle_models: {
+        Row: {
+          id: string
+          tenant_id: string
+          make_id: string
+          model_name: string
+          vehicle_type: string | null
+          default_vehicle_size_id: string | null
+          is_active: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          make_id: string
+          model_name: string
+          vehicle_type?: string | null
+          default_vehicle_size_id?: string | null
+          is_active?: boolean
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['vehicle_models']['Insert']>
+        Relationships: []
+      }
+      service_categories: {
+        Row: {
+          id: string
+          tenant_id: string
+          name: string
+          sort_order: number
+          is_active: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          name: string
+          sort_order?: number
+          is_active?: boolean
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['service_categories']['Insert']>
         Relationships: []
       }
       services: {
@@ -90,6 +252,9 @@ export interface Database {
           tenant_id: string
           name: string
           category: string | null
+          category_id: string | null
+          pricing_type: 'matrix' | 'flat' | 'starting_at' | 'quoted'
+          flat_price: number | null
           default_duration_minutes: number | null
           is_active: boolean
           created_at: string
@@ -99,6 +264,9 @@ export interface Database {
           tenant_id: string
           name: string
           category?: string | null
+          category_id?: string | null
+          pricing_type?: 'matrix' | 'flat' | 'starting_at' | 'quoted'
+          flat_price?: number | null
           default_duration_minutes?: number | null
           is_active?: boolean
           created_at?: string
@@ -111,7 +279,7 @@ export interface Database {
           id: string
           tenant_id: string
           service_id: string
-          vehicle_size_class_id: string
+          vehicle_size_id: string
           price: number
           is_active: boolean
           created_at: string
@@ -120,7 +288,7 @@ export interface Database {
           id?: string
           tenant_id: string
           service_id: string
-          vehicle_size_class_id: string
+          vehicle_size_id: string
           price: number
           is_active?: boolean
           created_at?: string
@@ -312,6 +480,10 @@ export interface Database {
       complete_ticket: {
         Args: { payload: Json }
         Returns: Json
+      }
+      has_permission: {
+        Args: { perm_key: string }
+        Returns: boolean
       }
     }
     Enums: Record<string, never>

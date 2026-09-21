@@ -5,20 +5,26 @@ import type { BoardTicket, LocalTicket, MutationQueueEntry } from '@/lib/offline
 // Read-cache tables: mirrors of Supabase catalog data, refreshed on reconnect, never locally
 // mutated. The POS (Phase 1) reads services/prices/products/consumables from here so it keeps
 // working offline; only admin/manager catalog *edits* require connectivity (see plan doc).
-type VehicleSizeClassRow = Database['public']['Tables']['vehicle_size_classes']['Row']
+type VehicleSizeRow = Database['public']['Tables']['vehicle_sizes']['Row']
 type ServiceRow = Database['public']['Tables']['services']['Row']
+type ServiceCategoryRow = Database['public']['Tables']['service_categories']['Row']
 type ServicePriceRow = Database['public']['Tables']['service_prices']['Row']
 type ProductRow = Database['public']['Tables']['products']['Row']
 type ConsumableRow = Database['public']['Tables']['consumables']['Row']
 type BayRow = Database['public']['Tables']['bays']['Row']
+type VehicleMakeRow = Database['public']['Tables']['vehicle_makes']['Row']
+type VehicleModelRow = Database['public']['Tables']['vehicle_models']['Row']
 
 class CarWashDB extends Dexie {
-  vehicleSizeClasses!: EntityTable<VehicleSizeClassRow, 'id'>
+  vehicleSizes!: EntityTable<VehicleSizeRow, 'id'>
   services!: EntityTable<ServiceRow, 'id'>
+  serviceCategories!: EntityTable<ServiceCategoryRow, 'id'>
   servicePrices!: EntityTable<ServicePriceRow, 'id'>
   products!: EntityTable<ProductRow, 'id'>
   consumables!: EntityTable<ConsumableRow, 'id'>
   bays!: EntityTable<BayRow, 'id'>
+  vehicleMakes!: EntityTable<VehicleMakeRow, 'id'>
+  vehicleModels!: EntityTable<VehicleModelRow, 'id'>
 
   // Outbox-backed: local optimistic tickets (keyed by the client-generated id, stable across the
   // whole offline -> synced lifecycle) and the mutation queue that actually drives syncing them.
@@ -50,6 +56,18 @@ class CarWashDB extends Dexie {
 
     this.version(3).stores({
       boardTickets: 'id, tenantId, clientGeneratedId, status, bayId',
+    })
+
+    // vehicle_size_classes -> vehicle_sizes rename (Phase 1 rework): Dexie has no rename
+    // primitive, so the old store is dropped and a new one created. This is just a read-cache --
+    // refreshCatalogCache() repopulates it on next load, no data loss of anything authoritative.
+    this.version(4).stores({
+      vehicleSizeClasses: null,
+      vehicleSizes: 'id, tenant_id, sort_order',
+      serviceCategories: 'id, tenant_id, sort_order',
+      servicePrices: 'id, tenant_id, service_id, vehicle_size_id',
+      vehicleMakes: 'id, tenant_id',
+      vehicleModels: 'id, tenant_id, make_id',
     })
   }
 }

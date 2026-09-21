@@ -7,16 +7,11 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import {
-  createVehicleSizeClass,
-  listVehicleSizeClasses,
-  setVehicleSizeClassActive,
-  type VehicleSizeClass,
-} from './api/catalogApi'
+import { createServiceCategory, listServiceCategories, setServiceCategoryActive, type ServiceCategory } from './api/catalogApi'
 
-export function VehicleSizeClassesPage() {
+export function ServiceCategoriesPage() {
   const { profile } = useTenant()
-  const [classes, setClasses] = useState<VehicleSizeClass[]>([])
+  const [categories, setCategories] = useState<ServiceCategory[]>([])
   const [loading, setLoading] = useState(true)
   const [name, setName] = useState('')
   const [sortOrder, setSortOrder] = useState('0')
@@ -25,9 +20,9 @@ export function VehicleSizeClassesPage() {
   async function reload() {
     setLoading(true)
     try {
-      setClasses(await listVehicleSizeClasses())
+      setCategories(await listServiceCategories())
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to load vehicle size classes')
+      toast.error(err instanceof Error ? err.message : 'Failed to load service categories')
     } finally {
       setLoading(false)
     }
@@ -42,49 +37,42 @@ export function VehicleSizeClassesPage() {
     if (!profile || !name.trim()) return
     setSubmitting(true)
     try {
-      await createVehicleSizeClass({
-        tenantId: profile.tenantId,
-        name: name.trim(),
-        sortOrder: Number(sortOrder) || 0,
-      })
+      await createServiceCategory({ tenantId: profile.tenantId, name: name.trim(), sortOrder: Number(sortOrder) || 0 })
       setName('')
       setSortOrder('0')
       await reload()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to create vehicle size class')
+      toast.error(err instanceof Error ? err.message : 'Failed to create category')
     } finally {
       setSubmitting(false)
     }
   }
 
-  async function toggleActive(row: VehicleSizeClass) {
+  async function toggleActive(row: ServiceCategory) {
     try {
-      await setVehicleSizeClassActive(row.id, !row.is_active)
+      await setServiceCategoryActive(row.id, !row.is_active)
       await reload()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to update vehicle size class')
+      toast.error(err instanceof Error ? err.message : 'Failed to update category')
     }
   }
 
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold">Vehicle Sizes</h1>
-        <p className="text-muted-foreground">
-          Used to price services (e.g. Sedan / SUV / Van-Pickup). Deactivate instead of deleting once
-          pricing history references a size class.
-        </p>
+        <h1 className="text-2xl font-semibold">Service Categories</h1>
+        <p className="text-muted-foreground">Group services for the register and reports (e.g. Wash, Detailing, Add-ons).</p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Add a size class</CardTitle>
+          <CardTitle>Add a category</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-3">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="name">Name</Label>
-              <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Sedan" required />
+              <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Interior" required />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="sort-order">Sort order</Label>
@@ -114,7 +102,7 @@ export function VehicleSizeClassesPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {classes.map((row) => (
+              {categories.map((row) => (
                 <TableRow key={row.id}>
                   <TableCell>{row.name}</TableCell>
                   <TableCell>{row.sort_order}</TableCell>
@@ -123,10 +111,10 @@ export function VehicleSizeClassesPage() {
                   </TableCell>
                 </TableRow>
               ))}
-              {!loading && classes.length === 0 && (
+              {!loading && categories.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={3} className="text-center text-muted-foreground">
-                    No vehicle size classes yet.
+                    No categories yet.
                   </TableCell>
                 </TableRow>
               )}

@@ -7,12 +7,15 @@ import { RoleGuard } from '@/lib/rbac/RoleGuard'
 import { LoginPage } from '@/features/auth/LoginPage'
 import { DashboardPage } from '@/features/dashboard/DashboardPage'
 import { ServicesPage } from '@/features/catalog/ServicesPage'
-import { VehicleSizeClassesPage } from '@/features/catalog/VehicleSizeClassesPage'
+import { ServiceCategoriesPage } from '@/features/catalog/ServiceCategoriesPage'
+import { VehicleSizesPage } from '@/features/catalog/VehicleSizesPage'
 import { ServicePricesPage } from '@/features/catalog/ServicePricesPage'
 import { BaysPage } from '@/features/catalog/BaysPage'
 import { PosPage } from '@/features/pos/PosPage'
 import { ReceiptPage } from '@/features/pos/ReceiptPage'
 import { BayBoardPage } from '@/features/bay-board/BayBoardPage'
+import { EmployeesPage } from '@/features/employees/EmployeesPage'
+import { SettingsPage } from '@/features/settings/SettingsPage'
 
 export default function App() {
   return (
@@ -41,10 +44,18 @@ export default function App() {
                 }
               />
               <Route
-                path="/admin/vehicle-size-classes"
+                path="/admin/service-categories"
                 element={
                   <RoleGuard allowedRoles={['admin', 'manager']}>
-                    <VehicleSizeClassesPage />
+                    <ServiceCategoriesPage />
+                  </RoleGuard>
+                }
+              />
+              <Route
+                path="/admin/vehicle-sizes"
+                element={
+                  <RoleGuard allowedRoles={['admin', 'manager']}>
+                    <VehicleSizesPage />
                   </RoleGuard>
                 }
               />
@@ -61,6 +72,22 @@ export default function App() {
                 element={
                   <RoleGuard allowedRoles={['admin', 'manager']}>
                     <BaysPage />
+                  </RoleGuard>
+                }
+              />
+              <Route
+                path="/admin/employees"
+                element={
+                  <RoleGuard allowedRoles={['admin', 'manager']}>
+                    <EmployeesPage />
+                  </RoleGuard>
+                }
+              />
+              <Route
+                path="/admin/settings"
+                element={
+                  <RoleGuard allowedRoles={['admin']}>
+                    <SettingsPage />
                   </RoleGuard>
                 }
               />

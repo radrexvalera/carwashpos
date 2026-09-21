@@ -5,23 +5,27 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { createService, listServices, setServiceActive, type Service } from './api/catalogApi'
+import { createService, listServiceCategories, listServices, setServiceActive, type Service, type ServiceCategory } from './api/catalogApi'
 
 export function ServicesPage() {
   const { profile } = useTenant()
   const [services, setServices] = useState<Service[]>([])
+  const [categories, setCategories] = useState<ServiceCategory[]>([])
   const [loading, setLoading] = useState(true)
   const [name, setName] = useState('')
-  const [category, setCategory] = useState('')
+  const [categoryId, setCategoryId] = useState<string>('')
   const [duration, setDuration] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
   async function reload() {
     setLoading(true)
     try {
-      setServices(await listServices())
+      const [servicesData, categoriesData] = await Promise.all([listServices(), listServiceCategories()])
+      setServices(servicesData)
+      setCategories(categoriesData)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to load services')
     } finally {
@@ -33,6 +37,8 @@ export function ServicesPage() {
     reload()
   }, [])
 
+  const categoryName = (id: string | null) => categories.find((c) => c.id === id)?.name ?? '—'
+
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
     if (!profile || !name.trim()) return
@@ -41,11 +47,10 @@ export function ServicesPage() {
       await createService({
         tenantId: profile.tenantId,
         name: name.trim(),
-        category: category.trim() || null,
+        categoryId: categoryId || null,
         defaultDurationMinutes: duration ? Number(duration) : null,
       })
       setName('')
-      setCategory('')
       setDuration('')
       await reload()
     } catch (err) {
@@ -70,7 +75,7 @@ export function ServicesPage() {
         <h1 className="text-2xl font-semibold">Services</h1>
         <p className="text-muted-foreground">
           The wash/detailing services you offer. Set per-vehicle-size pricing for each one under
-          Pricing.
+          Pricing. New categories can be added under Service Categories.
         </p>
       </div>
 
@@ -86,7 +91,18 @@ export function ServicesPage() {
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="category">Category</Label>
-              <Input id="category" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="e.g. Wash" />
+              <Select value={categoryId} onValueChange={setCategoryId}>
+                <SelectTrigger id="category" className="w-48">
+                  <SelectValue placeholder="Uncategorized" />
+                </SelectTrigger>
+                <SelectContent>
+                  {categories.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="duration">Duration (min)</Label>
@@ -120,7 +136,7 @@ export function ServicesPage() {
               {services.map((row) => (
                 <TableRow key={row.id}>
                   <TableCell>{row.name}</TableCell>
-                  <TableCell>{row.category ?? '—'}</TableCell>
+                  <TableCell>{categoryName(row.category_id)}</TableCell>
                   <TableCell>{row.default_duration_minutes ? `${row.default_duration_minutes} min` : '—'}</TableCell>
                   <TableCell className="text-right">
                     <Switch checked={row.is_active} onCheckedChange={() => toggleActive(row)} />
