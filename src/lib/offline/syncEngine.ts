@@ -1,6 +1,8 @@
 import { db } from '@/lib/db/dexie'
 import { supabase } from '@/lib/supabase/client'
-import type { Json } from '@/lib/supabase/types'
+import type { Database, Json } from '@/lib/supabase/types'
+
+type TicketStatus = Database['public']['Tables']['tickets']['Row']['status']
 
 const MAX_RETRIES = 5
 let flushing = false
@@ -45,6 +47,28 @@ export async function flushMutationQueue() {
             syncStatus: 'synced',
             syncError: undefined,
           })
+        }
+
+        if (mutation.entity === 'ticket_status_update') {
+          const payload = mutation.payload as {
+            client_generated_id: string
+            status: TicketStatus
+            bay_id: string | null
+            bay_entered_at: string | null
+            completed_at: string | null
+          }
+          const { error } = await supabase
+            .from('tickets')
+            .update({
+              status: payload.status,
+              bay_id: payload.bay_id,
+              bay_entered_at: payload.bay_entered_at,
+              completed_at: payload.completed_at,
+            })
+            .eq('client_generated_id', payload.client_generated_id)
+          if (error) throw error
+          // The resulting Postgres change round-trips back through Realtime (or the board's
+          // periodic refresh) to update boardTickets -- no local patch needed here.
         }
 
         await db.mutationQueue.update(mutation.id, { status: 'synced' })

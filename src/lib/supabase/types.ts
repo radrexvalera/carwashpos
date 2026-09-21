@@ -233,6 +233,7 @@ export interface Database {
           ticket_number: number
           status: 'waiting' | 'in_bay' | 'ready_for_pickup' | 'picked_up_paid' | 'voided'
           bay_id: string | null
+          bay_entered_at: string | null
           subtotal: number
           discount_total: number
           tax_total: number
@@ -248,6 +249,8 @@ export interface Database {
         Update: {
           status?: Database['public']['Tables']['tickets']['Row']['status']
           bay_id?: string | null
+          bay_entered_at?: string | null
+          completed_at?: string | null
         }
         Relationships: []
       }
@@ -286,7 +289,25 @@ export interface Database {
         Relationships: []
       }
     }
-    Views: Record<string, never>
+    Views: {
+      ticket_board_entries: {
+        Row: {
+          id: string
+          tenant_id: string
+          client_generated_id: string
+          ticket_number: number
+          status: Database['public']['Tables']['tickets']['Row']['status']
+          bay_id: string | null
+          bay_name: string | null
+          bay_entered_at: string | null
+          created_at: string
+          completed_at: string | null
+          total: number
+          summary: string | null
+        }
+        Relationships: []
+      }
+    }
     Functions: {
       complete_ticket: {
         Args: { payload: Json }

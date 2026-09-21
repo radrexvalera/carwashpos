@@ -10,6 +10,7 @@ import { useTenant } from './TenantProvider'
 const navItems: { to: string; label: string; roles?: Role[] }[] = [
   { to: '/', label: 'Dashboard' },
   { to: '/pos', label: 'Register' },
+  { to: '/bay-board', label: 'Bay Board' },
   { to: '/admin/services', label: 'Services', roles: ['admin', 'manager'] },
   { to: '/admin/vehicle-size-classes', label: 'Vehicle Sizes', roles: ['admin', 'manager'] },
   { to: '/admin/service-prices', label: 'Pricing', roles: ['admin', 'manager'] },

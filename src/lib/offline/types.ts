@@ -46,7 +46,7 @@ export type MutationStatus = 'pending' | 'syncing' | 'synced' | 'failed'
 export interface MutationQueueEntry {
   id: string
   tenantId: string
-  entity: 'ticket_complete'
+  entity: 'ticket_complete' | 'ticket_status_update'
   clientGeneratedId: string
   payload: unknown
   createdAt: string
@@ -55,4 +55,22 @@ export interface MutationQueueEntry {
   status: MutationStatus
   lastError?: string
   sequence: number
+}
+
+// Read-cache mirror of the ticket_board_entries view (Phase 2) -- refreshed via Realtime + polling,
+// not locally mutated directly (status changes go through the mutation queue like everything else,
+// and flow back into this cache once the resulting Postgres change round-trips through Realtime).
+export interface BoardTicket {
+  id: string
+  tenantId: string
+  clientGeneratedId: string
+  ticketNumber: number
+  status: string
+  bayId: string | null
+  bayName: string | null
+  bayEnteredAt: string | null
+  createdAt: string
+  completedAt: string | null
+  total: number
+  summary: string | null
 }

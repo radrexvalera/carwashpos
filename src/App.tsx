@@ -12,6 +12,7 @@ import { ServicePricesPage } from '@/features/catalog/ServicePricesPage'
 import { BaysPage } from '@/features/catalog/BaysPage'
 import { PosPage } from '@/features/pos/PosPage'
 import { ReceiptPage } from '@/features/pos/ReceiptPage'
+import { BayBoardPage } from '@/features/bay-board/BayBoardPage'
 
 export default function App() {
   return (
@@ -30,6 +31,7 @@ export default function App() {
               <Route path="/" element={<DashboardPage />} />
               <Route path="/pos" element={<PosPage />} />
               <Route path="/receipt/:clientGeneratedId" element={<ReceiptPage />} />
+              <Route path="/bay-board" element={<BayBoardPage />} />
               <Route
                 path="/admin/services"
                 element={

@@ -1,6 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie'
 import type { Database } from '@/lib/supabase/types'
-import type { LocalTicket, MutationQueueEntry } from '@/lib/offline/types'
+import type { BoardTicket, LocalTicket, MutationQueueEntry } from '@/lib/offline/types'
 
 // Read-cache tables: mirrors of Supabase catalog data, refreshed on reconnect, never locally
 // mutated. The POS (Phase 1) reads services/prices/products/consumables from here so it keeps
@@ -25,6 +25,12 @@ class CarWashDB extends Dexie {
   tickets!: EntityTable<LocalTicket, 'clientGeneratedId'>
   mutationQueue!: EntityTable<MutationQueueEntry, 'id'>
 
+  // Read-cache mirror of the ticket_board_entries view (Phase 2) -- ALL open tickets tenant-wide,
+  // not just ones this device created. Keyed by the server id since it's populated from server
+  // reads; boardTickets.clientGeneratedId is still indexed so a status-update mutation can find
+  // the row it should patch.
+  boardTickets!: EntityTable<BoardTicket, 'id'>
+
   constructor() {
     super('carwash-pos')
 
@@ -40,6 +46,10 @@ class CarWashDB extends Dexie {
     this.version(2).stores({
       tickets: 'clientGeneratedId, tenantId, status, syncStatus, createdAt',
       mutationQueue: 'id, tenantId, status, sequence',
+    })
+
+    this.version(3).stores({
+      boardTickets: 'id, tenantId, clientGeneratedId, status, bayId',
     })
   }
 }
