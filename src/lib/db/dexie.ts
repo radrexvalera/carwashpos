@@ -1,5 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie'
 import type { Database } from '@/lib/supabase/types'
+import type { LocalTicket, MutationQueueEntry } from '@/lib/offline/types'
 
 // Read-cache tables: mirrors of Supabase catalog data, refreshed on reconnect, never locally
 // mutated. The POS (Phase 1) reads services/prices/products/consumables from here so it keeps
@@ -11,9 +12,6 @@ type ProductRow = Database['public']['Tables']['products']['Row']
 type ConsumableRow = Database['public']['Tables']['consumables']['Row']
 type BayRow = Database['public']['Tables']['bays']['Row']
 
-// Phase 1+ will extend this schema (via db.version(2).stores(...)) to add the outbox-backed
-// writable tables: tickets, ticket_line_items, ticket_payments, shifts, cash_movements, and the
-// mutation_queue table itself. See the plan's "Dexie / Offline Sync Architecture" section.
 class CarWashDB extends Dexie {
   vehicleSizeClasses!: EntityTable<VehicleSizeClassRow, 'id'>
   services!: EntityTable<ServiceRow, 'id'>
@@ -21,6 +19,11 @@ class CarWashDB extends Dexie {
   products!: EntityTable<ProductRow, 'id'>
   consumables!: EntityTable<ConsumableRow, 'id'>
   bays!: EntityTable<BayRow, 'id'>
+
+  // Outbox-backed: local optimistic tickets (keyed by the client-generated id, stable across the
+  // whole offline -> synced lifecycle) and the mutation queue that actually drives syncing them.
+  tickets!: EntityTable<LocalTicket, 'clientGeneratedId'>
+  mutationQueue!: EntityTable<MutationQueueEntry, 'id'>
 
   constructor() {
     super('carwash-pos')
@@ -32,6 +35,11 @@ class CarWashDB extends Dexie {
       products: 'id, tenant_id, sku',
       consumables: 'id, tenant_id',
       bays: 'id, tenant_id, location_id, sort_order',
+    })
+
+    this.version(2).stores({
+      tickets: 'clientGeneratedId, tenantId, status, syncStatus, createdAt',
+      mutationQueue: 'id, tenantId, status, sequence',
     })
   }
 }

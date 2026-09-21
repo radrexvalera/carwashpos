@@ -10,6 +10,8 @@ import { ServicesPage } from '@/features/catalog/ServicesPage'
 import { VehicleSizeClassesPage } from '@/features/catalog/VehicleSizeClassesPage'
 import { ServicePricesPage } from '@/features/catalog/ServicePricesPage'
 import { BaysPage } from '@/features/catalog/BaysPage'
+import { PosPage } from '@/features/pos/PosPage'
+import { ReceiptPage } from '@/features/pos/ReceiptPage'
 
 export default function App() {
   return (
@@ -26,6 +28,8 @@ export default function App() {
               }
             >
               <Route path="/" element={<DashboardPage />} />
+              <Route path="/pos" element={<PosPage />} />
+              <Route path="/receipt/:clientGeneratedId" element={<ReceiptPage />} />
               <Route
                 path="/admin/services"
                 element={

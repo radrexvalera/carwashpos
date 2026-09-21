@@ -2,11 +2,14 @@ import { NavLink, Outlet } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import type { Role } from '@/lib/supabase/types'
+import { useOfflineBootstrap } from '@/lib/offline/useOfflineBootstrap'
+import { SyncStatusBadge } from '@/lib/offline/SyncStatusBadge'
 import { useAuth } from './AuthProvider'
 import { useTenant } from './TenantProvider'
 
 const navItems: { to: string; label: string; roles?: Role[] }[] = [
   { to: '/', label: 'Dashboard' },
+  { to: '/pos', label: 'Register' },
   { to: '/admin/services', label: 'Services', roles: ['admin', 'manager'] },
   { to: '/admin/vehicle-size-classes', label: 'Vehicle Sizes', roles: ['admin', 'manager'] },
   { to: '/admin/service-prices', label: 'Pricing', roles: ['admin', 'manager'] },
@@ -16,6 +19,7 @@ const navItems: { to: string; label: string; roles?: Role[] }[] = [
 export function AppShell() {
   const { signOut } = useAuth()
   const { profile } = useTenant()
+  useOfflineBootstrap(profile?.tenantId)
 
   const visibleItems = navItems.filter((item) => !item.roles || (profile && item.roles.includes(profile.role)))
 
@@ -43,6 +47,9 @@ export function AppShell() {
         <div className="border-t p-3">
           <div className="mb-2 px-1 text-xs text-muted-foreground">
             {profile?.fullName} · {profile?.role}
+          </div>
+          <div className="mb-2">
+            <SyncStatusBadge />
           </div>
           <Button variant="outline" size="sm" className="w-full" onClick={() => signOut()}>
             Sign out
