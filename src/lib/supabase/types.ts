@@ -829,6 +829,8 @@ export interface Database {
           promotion_discount_amount: number
           loyalty_points_redeemed: number
           loyalty_discount_amount: number
+          billing_type: 'immediate' | 'on_account'
+          payment_status: 'paid' | 'partial' | 'unpaid'
         }
         Insert: never
         Update: never
@@ -1042,6 +1044,28 @@ export interface Database {
         Update: never
         Relationships: []
       }
+      fleet_accounts: {
+        Row: {
+          id: string
+          tenant_id: string
+          customer_id: string
+          credit_limit: number | null
+          payment_terms_days: number
+          is_active: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          customer_id: string
+          credit_limit?: number | null
+          payment_terms_days?: number
+          is_active?: boolean
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['fleet_accounts']['Insert']>
+        Relationships: []
+      }
     }
     Views: {
       ticket_board_entries: {
@@ -1115,6 +1139,15 @@ export interface Database {
         }
         Relationships: []
       }
+      fleet_account_balances: {
+        Row: {
+          fleet_account_id: string
+          tenant_id: string
+          customer_id: string
+          outstanding_balance: number
+        }
+        Relationships: []
+      }
     }
     Functions: {
       complete_ticket: {
@@ -1139,6 +1172,10 @@ export interface Database {
       }
       adjust_loyalty_points: {
         Args: { p_customer_id: string; p_points_delta: number; p_reason: string }
+        Returns: Json
+      }
+      record_fleet_settlement: {
+        Args: { p_sale_id: string; p_method: string; p_amount: number; p_reference_note: string | null }
         Returns: Json
       }
       close_shift: {

@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase/client'
 import type { Json } from '@/lib/supabase/types'
 import { getLoyaltyBalance } from '@/features/loyalty/api/loyaltyApi'
+import { getFleetAccountForCustomer } from '@/features/fleet/api/fleetApi'
 
 // Payment collection is online-only for v1: by the time a job shows on the queue board it's
 // already synced (the board only ever reads server data), and create_sale() needs real
@@ -39,6 +40,7 @@ export async function getJobForPayment(jobId: string) {
 
   let customer: { id: string; full_name: string } | null = null
   let loyaltyBalance = 0
+  let fleetAccount: Awaited<ReturnType<typeof getFleetAccountForCustomer>> = null
   if (vehicle.customer_id) {
     const { data: customerData, error: customerError } = await supabase
       .from('customers')
@@ -47,7 +49,10 @@ export async function getJobForPayment(jobId: string) {
       .single()
     if (customerError) throw customerError
     customer = customerData
-    loyaltyBalance = await getLoyaltyBalance(customerData.id)
+    ;[loyaltyBalance, fleetAccount] = await Promise.all([
+      getLoyaltyBalance(customerData.id),
+      getFleetAccountForCustomer(customerData.id),
+    ])
   }
 
   return {
@@ -57,6 +62,7 @@ export async function getJobForPayment(jobId: string) {
     retailItems: retailItems ?? [],
     customer,
     loyaltyBalance,
+    fleetAccount,
   }
 }
 
@@ -68,6 +74,7 @@ interface CreateSaleInput {
   payments: { method: string; amount: number; referenceNote?: string }[]
   promotionId?: string | null
   loyaltyPointsRedeemed?: number
+  billingType?: 'immediate' | 'on_account'
 }
 
 export async function createSaleForJob(input: CreateSaleInput) {
@@ -77,6 +84,7 @@ export async function createSaleForJob(input: CreateSaleInput) {
     job_id: input.jobId,
     promotion_id: input.promotionId || null,
     loyalty_points_redeemed: input.loyaltyPointsRedeemed || 0,
+    billing_type: input.billingType || 'immediate',
     line_items: [
       ...input.lineItems.map((l) => ({
         line_type: 'job_service',
@@ -104,5 +112,7 @@ export async function createSaleForJob(input: CreateSaleInput) {
     loyalty_discount_amount: number
     loyalty_points_redeemed: number
     loyalty_points_earned: number
+    billing_type: string
+    payment_status: string
   }
 }

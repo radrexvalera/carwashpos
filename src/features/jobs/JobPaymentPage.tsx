@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
+import { Switch } from '@/components/ui/switch'
 import { formatMoney } from '@/lib/money'
 import { useTenant } from '@/app/TenantProvider'
 import { getActiveShift } from '@/features/shifts/api/shiftsApi'
@@ -14,6 +15,7 @@ import { listActivePromotionsWithServices } from '@/features/promotions/api/prom
 import { getSettings } from '@/features/settings/api/settingsApi'
 import { createSaleForJob, getJobForPayment } from './api/jobPaymentApi'
 import type { InventoryStockLevel } from '@/features/inventory/api/inventoryApi'
+import type { getFleetAccountForCustomer } from '@/features/fleet/api/fleetApi'
 
 type JobService = { id: string; service_id: string; unit_price: number; quantity: number; line_total: number; serviceName: string }
 type PaymentMethod = 'cash' | 'gcash' | 'maya' | 'bank_transfer' | 'card'
@@ -53,6 +55,8 @@ export function JobPaymentPage() {
     promotionDiscount: number
     loyaltyDiscount: number
     pointsEarned: number
+    billingType: string
+    paymentStatus: string
   } | null>(null)
   const [customer, setCustomer] = useState<{ id: string; full_name: string } | null>(null)
   const [loyaltyBalance, setLoyaltyBalance] = useState(0)
@@ -60,6 +64,8 @@ export function JobPaymentPage() {
   const [promotionId, setPromotionId] = useState<string>('none')
   const [redeemPoints, setRedeemPoints] = useState('')
   const [redemptionValue, setRedemptionValue] = useState(0.5)
+  const [fleetAccount, setFleetAccount] = useState<Awaited<ReturnType<typeof getFleetAccountForCustomer>>>(null)
+  const [billOnAccount, setBillOnAccount] = useState(false)
 
   useEffect(() => {
     if (!jobId || !profile) return
@@ -74,6 +80,7 @@ export function JobPaymentPage() {
         setLoyaltyBalance(jobData.loyaltyBalance)
         setPromotions(promos)
         setRedemptionValue(settings.loyalty_redemption_value)
+        setFleetAccount(jobData.fleetAccount)
       })
       .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to load job'))
       .finally(() => setLoading(false))
@@ -148,6 +155,7 @@ export function JobPaymentPage() {
         payments,
         promotionId: promotionId !== 'none' ? promotionId : null,
         loyaltyPointsRedeemed: pointsToRedeem,
+        billingType: billOnAccount ? 'on_account' : 'immediate',
       })
       setResult({
         saleNumber: sale.sale_number,
@@ -155,6 +163,8 @@ export function JobPaymentPage() {
         promotionDiscount: sale.promotion_discount_amount,
         loyaltyDiscount: sale.loyalty_discount_amount,
         pointsEarned: sale.loyalty_points_earned,
+        billingType: sale.billing_type,
+        paymentStatus: sale.payment_status,
       })
       toast.success('Payment recorded')
     } catch (err) {
@@ -195,6 +205,9 @@ export function JobPaymentPage() {
             )}
             {result.pointsEarned > 0 && (
               <div className="text-sm text-muted-foreground">Points earned: +{result.pointsEarned}</div>
+            )}
+            {result.billingType === 'on_account' && result.paymentStatus !== 'paid' && (
+              <div className="text-sm text-muted-foreground">Billed to fleet account — {result.paymentStatus}</div>
             )}
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => window.print()}>
@@ -257,6 +270,19 @@ export function JobPaymentPage() {
                   value={redeemPoints}
                   onChange={(e) => setRedeemPoints(e.target.value)}
                 />
+              </div>
+            )}
+            {fleetAccount && (
+              <div className="flex items-center justify-between rounded-md border p-3">
+                <div className="flex flex-col">
+                  <span className="text-sm font-medium">Bill to fleet account</span>
+                  <span className="text-xs text-muted-foreground">
+                    {fleetAccount.credit_limit != null
+                      ? `Available credit: ${formatMoney(Math.max(0, fleetAccount.credit_limit - fleetAccount.outstandingBalance))}`
+                      : 'Unlimited credit'}
+                  </span>
+                </div>
+                <Switch checked={billOnAccount} onCheckedChange={setBillOnAccount} />
               </div>
             )}
           </CardContent>
@@ -379,7 +405,7 @@ export function JobPaymentPage() {
           )}
 
           <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Remaining</span>
+            <span className="text-muted-foreground">{billOnAccount ? 'Remaining (on account)' : 'Remaining'}</span>
             <span>{formatMoney(Math.max(remaining, 0))}</span>
           </div>
 
@@ -418,10 +444,10 @@ export function JobPaymentPage() {
 
           <Button
             size="lg"
-            disabled={submitting || payments.length === 0 || Math.abs(remaining) > 0.01}
+            disabled={submitting || (billOnAccount ? remaining < -0.01 : payments.length === 0 || Math.abs(remaining) > 0.01)}
             onClick={handleSubmit}
           >
-            Complete payment
+            {billOnAccount && remaining > 0.01 ? 'Bill to fleet account' : 'Complete payment'}
           </Button>
         </CardContent>
       </Card>
