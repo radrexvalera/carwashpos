@@ -15,6 +15,30 @@ export async function createCustomer(input: { tenantId: string; fullName: string
   return data.id
 }
 
+// Plain online search (unlike RegisterPage's Dexie-backed local cache) -- appointments are
+// booked ahead of time, an inherently online administrative action, same as everything else in
+// this feature. Manual join (not a nested select) since this codebase's hand-written types.ts
+// doesn't model embedded relations.
+export async function searchVehicles(query: string) {
+  if (!query.trim()) return []
+  const { data, error } = await supabase
+    .from('vehicles')
+    .select('*')
+    .ilike('plate_number', `%${query.trim()}%`)
+    .eq('is_active', true)
+    .limit(10)
+  if (error) throw error
+
+  const customerIds = [...new Set((data ?? []).map((v) => v.customer_id).filter((id): id is string => !!id))]
+  const { data: customers, error: customerError } = customerIds.length
+    ? await supabase.from('customers').select('id, full_name').in('id', customerIds)
+    : { data: [] as { id: string; full_name: string }[], error: null }
+  if (customerError) throw customerError
+  const nameByCustomer = new Map((customers ?? []).map((c) => [c.id, c.full_name]))
+
+  return (data ?? []).map((v) => ({ ...v, customerName: v.customer_id ? (nameByCustomer.get(v.customer_id) ?? null) : null }))
+}
+
 export async function createVehicle(input: {
   tenantId: string
   customerId: string | null

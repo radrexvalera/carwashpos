@@ -1120,6 +1120,53 @@ export interface Database {
         Update: never
         Relationships: []
       }
+      appointments: {
+        Row: {
+          id: string
+          tenant_id: string
+          location_id: string
+          vehicle_id: string
+          vehicle_size_id: string
+          scheduled_at: string
+          status: 'scheduled' | 'converted' | 'cancelled' | 'no_show'
+          notes: string | null
+          converted_job_id: string | null
+          created_by: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          location_id: string
+          vehicle_id: string
+          vehicle_size_id: string
+          scheduled_at: string
+          status?: 'scheduled' | 'converted' | 'cancelled' | 'no_show'
+          notes?: string | null
+          converted_job_id?: string | null
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['appointments']['Insert']>
+        Relationships: []
+      }
+      appointment_services: {
+        Row: {
+          id: string
+          tenant_id: string
+          appointment_id: string
+          service_id: string
+          quantity: number
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          appointment_id: string
+          service_id: string
+          quantity?: number
+        }
+        Update: never
+        Relationships: []
+      }
     }
     Views: {
       ticket_board_entries: {

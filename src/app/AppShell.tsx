@@ -10,6 +10,7 @@ import { useTenant } from './TenantProvider'
 const navItems: { to: string; label: string; roles?: Role[] }[] = [
   { to: '/', label: 'Dashboard' },
   { to: '/register', label: 'Register' },
+  { to: '/appointments', label: 'Appointments' },
   { to: '/jobs', label: 'Job Queue' },
   { to: '/shift', label: 'My Shift' },
   { to: '/my-commission', label: 'My Commission' },

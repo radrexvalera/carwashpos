@@ -34,6 +34,7 @@ import { PromotionsPage } from '@/features/promotions/PromotionsPage'
 import { LoyaltyPage } from '@/features/loyalty/LoyaltyPage'
 import { FleetAccountsPage } from '@/features/fleet/FleetAccountsPage'
 import { MembershipProgramsPage } from '@/features/memberships/MembershipProgramsPage'
+import { AppointmentsPage } from '@/features/appointments/AppointmentsPage'
 
 export default function App() {
   return (
@@ -51,6 +52,7 @@ export default function App() {
             >
               <Route path="/" element={<DashboardPage />} />
               <Route path="/register" element={<RegisterPage />} />
+              <Route path="/appointments" element={<AppointmentsPage />} />
               <Route path="/jobs" element={<JobQueuePage />} />
               <Route path="/jobs/:jobId/pay" element={<JobPaymentPage />} />
               <Route path="/shift" element={<ShiftPage />} />
