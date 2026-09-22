@@ -55,6 +55,9 @@ export interface MutationQueueEntry {
   status: MutationStatus
   lastError?: string
   sequence: number
+  // Set on a failed-but-not-exhausted attempt (exponential backoff + jitter) -- flushMutationQueue
+  // skips a pending entry until this passes, so a transient failure isn't hammered instantly.
+  nextAttemptAt?: string
 }
 
 // A job's services are priced/created server-side (create_job()) -- this local shape is what the

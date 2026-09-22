@@ -1,7 +1,9 @@
 import { useLiveQuery } from 'dexie-react-hooks'
+import { useState } from 'react'
 import { db } from '@/lib/db/dexie'
 import { Badge } from '@/components/ui/badge'
 import { useOnlineStatus } from './useOnlineStatus'
+import { SyncFailuresDialog } from './SyncFailuresDialog'
 
 export function SyncStatusBadge() {
   const online = useOnlineStatus()
@@ -11,6 +13,7 @@ export function SyncStatusBadge() {
     0,
   )
   const failedCount = useLiveQuery(() => db.mutationQueue.where('status').equals('failed').count(), [], 0)
+  const [failuresOpen, setFailuresOpen] = useState(false)
 
   if (!online) {
     return (
@@ -22,9 +25,14 @@ export function SyncStatusBadge() {
 
   if (failedCount) {
     return (
-      <Badge variant="destructive" className="w-full justify-center">
-        {failedCount} sync issue{failedCount === 1 ? '' : 's'}
-      </Badge>
+      <>
+        <button className="w-full" onClick={() => setFailuresOpen(true)}>
+          <Badge variant="destructive" className="w-full cursor-pointer justify-center">
+            {failedCount} sync issue{failedCount === 1 ? '' : 's'}
+          </Badge>
+        </button>
+        <SyncFailuresDialog open={failuresOpen} onOpenChange={setFailuresOpen} />
+      </>
     )
   }
 

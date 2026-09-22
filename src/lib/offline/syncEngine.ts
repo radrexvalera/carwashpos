@@ -8,6 +8,15 @@ type JobStatus = Database['public']['Tables']['jobs']['Row']['status']
 const MAX_RETRIES = 5
 let flushing = false
 
+// Only matters for the "online but this specific request failed transiently" case --
+// flushMutationQueue already short-circuits entirely when offline, so a real connectivity drop is
+// unaffected by this. Jitter so multiple devices retrying the same transient outage don't all hit
+// the server in the same instant.
+function backoffMs(retryCount: number) {
+  const base = Math.min(3_000 * 2 ** retryCount, 60_000)
+  return base + Math.random() * 0.3 * base
+}
+
 // Processes pending mutation_queue entries in local sequence order. Each entry is one
 // semantically-atomic action (e.g. "complete this ticket") that maps to a single Postgres RPC
 // call -- never row-level CRUD sync. A failure on one entry doesn't block the rest of the queue
@@ -18,7 +27,10 @@ export async function flushMutationQueue() {
   flushing = true
 
   try {
-    const pending = await db.mutationQueue.where('status').equals('pending').sortBy('sequence')
+    const now = Date.now()
+    const pending = (await db.mutationQueue.where('status').equals('pending').sortBy('sequence')).filter(
+      (m) => !m.nextAttemptAt || new Date(m.nextAttemptAt).getTime() <= now,
+    )
 
     for (const mutation of pending) {
       try {
@@ -126,6 +138,7 @@ export async function flushMutationQueue() {
           status: failed ? 'failed' : 'pending',
           retryCount,
           lastError: message,
+          nextAttemptAt: failed ? undefined : new Date(Date.now() + backoffMs(retryCount)).toISOString(),
         })
 
         if (mutation.entity === 'ticket_complete') {
@@ -146,6 +159,30 @@ export async function flushMutationQueue() {
   } finally {
     flushing = false
   }
+}
+
+// The one place that knows how to "un-fail" a queue entry -- resets it to pending and clears the
+// backoff/error state, then patches the associated local record's own syncStatus back to pending
+// too (mirrors what the per-job retry in jobMutations.ts already did, generalized to any entity).
+export async function retryMutation(mutationId: string) {
+  const mutation = await db.mutationQueue.get(mutationId)
+  if (!mutation) return
+
+  await db.mutationQueue.update(mutationId, {
+    status: 'pending',
+    retryCount: 0,
+    lastError: undefined,
+    nextAttemptAt: undefined,
+  })
+
+  if (mutation.entity === 'job_create') {
+    await db.jobs.update(mutation.clientGeneratedId, { syncStatus: 'pending', syncError: undefined })
+  }
+  if (mutation.entity === 'ticket_complete') {
+    await db.tickets.update(mutation.clientGeneratedId, { syncStatus: 'pending', syncError: undefined })
+  }
+
+  void flushMutationQueue()
 }
 
 // Starts the background flush loop: immediately, on every reconnect, and on a periodic interval
