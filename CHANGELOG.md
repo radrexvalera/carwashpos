@@ -2,6 +2,15 @@
 
 Major implementation changes, newest first. This tracks the new 8-phase roadmap (OtoKwikk Car Wash Management System); see the git history before 2026-09-21 for the earlier, since-superseded simple-POS build (Phases 0–2 of the original scope).
 
+## Phase 7a — Offline/PWA Hardening: Offline Job Visibility (2026-09-23)
+
+First slice of Phase 7. A job created while offline previously had no number and was fully invisible on the Job Queue board until it synced — `db.jobs` (the local outbox) and `db.boardJobs` (the server-synced board cache) were two separate Dexie tables with no merge logic between them.
+
+- **Deliberately skipped** the devices-table + client-side numbering scheme the original architecture plan sketched for this item — a client-generated number that has to reconcile with (or be trusted over) the server's `tenant_job_counters`-assigned number is the same two-systems-of-record problem this project avoids everywhere else. Simpler fix: while unsynced, the job shows on the board as a clearly-labeled pending card (plate, size, services, "Syncing…") with no fake number; once the real sync completes it's replaced by the real card automatically. No migration, no RPC change — pure Dexie/React.
+- Also closes a related dead end: a mutation that exhausted its 5 retries was previously stuck `'failed'` forever with no recourse anywhere. Added `retryFailedJob()` (resets sync status + the queued mutation, reuses the existing `flushMutationQueue()` as-is) plus a "Retry" button on a failed pending card. Full sync-engine hardening (backoff/jitter, a dedicated failures panel) is left for a later Phase 7 slice.
+- Verified by the user directly in the running app: offline job creation shows immediately as a "Pending / Syncing…" card in Waiting; reconnecting replaces it with the real synced card and true job number, no duplicate left behind.
+- Not yet built (remaining Phase 7 slices): PWA installability + asset caching (currently zero manifest/service-worker infrastructure), and the fuller sync-engine hardening mentioned above.
+
 ## Phase 6e — Advanced: Vehicle Inspections (2026-09-23)
 
 Fifth and final Phase 6 slice — **Phase 6 ("advanced features") is now complete.** Confirmed purpose: pre-service condition documentation (photos + notes of existing scratches/dents/damage, captured at intake before work starts, to protect the shop from "you damaged my car" disputes) — not a pickup/quality checklist. One inspection per job, intake only.
