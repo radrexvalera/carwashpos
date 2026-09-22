@@ -2,6 +2,17 @@
 
 Major implementation changes, newest first. This tracks the new 8-phase roadmap (OtoKwikk Car Wash Management System); see the git history before 2026-09-21 for the earlier, since-superseded simple-POS build (Phases 0–2 of the original scope).
 
+## Phase 6e — Advanced: Vehicle Inspections (2026-09-23)
+
+Fifth and final Phase 6 slice — **Phase 6 ("advanced features") is now complete.** Confirmed purpose: pre-service condition documentation (photos + notes of existing scratches/dents/damage, captured at intake before work starts, to protect the shop from "you damaged my car" disputes) — not a pickup/quality checklist. One inspection per job, intake only.
+
+- **First Supabase Storage usage anywhere in this repo.** A full-repo search earlier confirmed zero existing bucket/policy/`supabase.storage` call. Provisioned the same way as every other piece of schema here — a migration, not a dashboard step: a Storage bucket is just a row in `storage.buckets`. Access is RLS on `storage.objects` using the exact same `current_tenant_id()` tenant-scoping shape every other table's select policy already uses, keyed off the `tenant_id` path segment (`{tenant_id}/{job_id}/{uuid}-{filename}`). The bucket is **private**, not public — served via signed URLs generated fresh on read, not a public URL.
+- Same "plain client insert, no RPC" shape as appointments (6d): `vehicle_inspections`/`vehicle_inspection_photos` reuse the existing `can_manage_jobs` permission, and `created_by` defaults via `auth.uid()` at the column level.
+- Frontend: an "Inspect" action on Job Queue's Waiting-column job cards opens a dialog (notes, camera/file capture via `capture="environment"`, a thumbnail grid of already-uploaded photos) — reached from the job board rather than bolted onto Register, mirroring how Collect Payment is already its own destination reached from a job.
+- Verified: backend (bucket privacy/limits, RLS, `created_by` default) via SQL under real RLS; the actual upload → signed-URL round trip, the one thing SQL can't exercise, confirmed working end-to-end by the user directly in the running app.
+
+**Phase 6 summary**: promotions + loyalty points (6a), fleet accounts / deferred billing (6b), memberships as a stamp card (6c), appointments (6d), vehicle inspections (6e) — five slices, each building on the same conventions (append-only ledgers with a derived-sum view, `create_sale()` as the single point where checkout-time discounts/entitlements are computed server-side, permission reuse before adding a new one, RLS as the real enforcement boundary). Remaining on the original 8-phase roadmap: Phase 7 (offline/PWA hardening) and Phase 8 (production hardening).
+
 ## Phase 6d — Advanced: Appointments (2026-09-22)
 
 Fourth Phase 6 slice, and the last one before vehicle inspections (its own future pass — needs a new Supabase Storage bucket built from scratch). Bookings made ahead of time; staff "check in" an appointment later, which becomes a real job.
