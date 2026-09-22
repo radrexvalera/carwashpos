@@ -2,6 +2,18 @@
 
 Major implementation changes, newest first. This tracks the new 8-phase roadmap (OtoKwikk Car Wash Management System); see the git history before 2026-09-21 for the earlier, since-superseded simple-POS build (Phases 0–2 of the original scope).
 
+## Phase 6b — Advanced: Fleet Accounts (2026-09-22)
+
+Second Phase 6 slice: deferred/on-account billing for corporate fleet clients.
+
+- **Fleet accounts**: `fleet_accounts` is a 1:1 add-on to a `company`-type `customer`, not a separate fleet↔vehicle join table — `vehicles.customer_id` already supports many vehicles per customer for free, so every vehicle under the account's customer *is* a fleet vehicle with zero new schema.
+- **On-account sales**: `create_sale()` gained `billing_type = 'on_account'`, which relaxes the usual exact-payment-match requirement (a sale can be created with zero or partial payment; only overpayment is rejected), enforces the account's `credit_limit` against a running `fleet_account_balances` view (derived-sum, same discipline as `loyalty_balances`/`inventory_stock_levels` — no stored counter), and sets `payment_status` (`paid`/`partial`/`unpaid`).
+- **Settlement**: `record_fleet_settlement()` pays down one specific invoice later — partial settlements allowed, capped to what's still owed on that sale so it can never overpay or go negative. Gated on a new `can_manage_fleet_accounts` permission (an office/accounting task, not tied to having an open shift the way `create_sale()` is). Backfilled onto the existing tenant's admin+manager roles directly, since the tenant-creation trigger's wildcard admin grant only covers tenants created from here on — and added to `seed_new_tenant_defaults()` so that stays correct going forward.
+- **Bug caught during verification**: loyalty was earning immediately on an unpaid on-account sale, before any money had actually been collected. Fixed so earn only fires once a sale reaches `payment_status = 'paid'` — either at creation (an on-account sale that happens to be paid in full up front) or later when a settlement completes it — confirmed to fire exactly once either way.
+- Frontend: Fleet Accounts admin page (search an existing customer or create a new company inline, credit limit/payment terms, outstanding invoices with a record-payment dialog), Collect Payment gained a "bill to fleet account" toggle showing available credit.
+- Verified end-to-end via SQL under real RLS: credit-limit rejection and success after raising it, partial settlement reduces the balance correctly, over-settlement and settling an already-paid invoice are rejected, an inactive/nonexistent fleet account is rejected.
+- Not yet built (remaining Phase 6 slices): memberships, appointments, vehicle inspections.
+
 ## Phase 6a — Advanced: Promotions & Loyalty Points (2026-09-22)
 
 Phase 6 ("advanced": promotions, loyalty, memberships, fleet accounts, appointments, vehicle inspections) is being delivered incrementally. This slice covers promotions + loyalty, since both hook into the same place — `create_sale()`'s discount computation.
