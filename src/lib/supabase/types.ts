@@ -1167,6 +1167,45 @@ export interface Database {
         Update: never
         Relationships: []
       }
+      vehicle_inspections: {
+        Row: {
+          id: string
+          tenant_id: string
+          job_id: string
+          notes: string | null
+          created_by: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          job_id: string
+          notes?: string | null
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['vehicle_inspections']['Insert']>
+        Relationships: []
+      }
+      vehicle_inspection_photos: {
+        Row: {
+          id: string
+          tenant_id: string
+          inspection_id: string
+          storage_path: string
+          caption: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          inspection_id: string
+          storage_path: string
+          caption?: string | null
+          created_at?: string
+        }
+        Update: never
+        Relationships: []
+      }
     }
     Views: {
       ticket_board_entries: {

@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import type { BoardJob } from '@/lib/offline/types'
+import { InspectionDialog } from '@/features/inspections/InspectionDialog'
 import { completeJobOffline, updateJobStatus } from './api/jobStatusMutations'
 import { useJobBoardSync } from './hooks/useJobBoardSync'
 
@@ -34,6 +35,8 @@ export function JobQueuePage() {
     [profile?.tenantId],
     [],
   )
+
+  const [inspectingJob, setInspectingJob] = useState<BoardJob | null>(null)
 
   const [, tick] = useState(0)
   useEffect(() => {
@@ -112,6 +115,11 @@ export function JobQueuePage() {
                     <div className="text-sm font-medium">{formatMoney(job.estimatedTotal)}</div>
                     <div className="text-xs text-muted-foreground">{elapsed(job.createdAt)}</div>
 
+                    {col.status === 'waiting' && (
+                      <Button size="sm" variant="outline" onClick={() => setInspectingJob(job)}>
+                        Inspect
+                      </Button>
+                    )}
                     {col.status === 'waiting' && (bays ?? []).length > 0 && (
                       <div className="flex flex-wrap gap-1">
                         {(bays ?? []).map((b) => (
@@ -145,6 +153,15 @@ export function JobQueuePage() {
           </div>
         ))}
       </div>
+
+      {inspectingJob && (
+        <InspectionDialog
+          jobId={inspectingJob.id}
+          plateNumber={inspectingJob.plateNumber}
+          open={!!inspectingJob}
+          onOpenChange={(o) => !o && setInspectingJob(null)}
+        />
+      )}
     </div>
   )
 }
