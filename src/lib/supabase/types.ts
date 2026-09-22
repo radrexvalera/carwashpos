@@ -831,6 +831,9 @@ export interface Database {
           loyalty_discount_amount: number
           billing_type: 'immediate' | 'on_account'
           payment_status: 'paid' | 'partial' | 'unpaid'
+          membership_program_id: string | null
+          membership_redeemed_job_service_id: string | null
+          membership_discount_amount: number
         }
         Insert: never
         Update: never
@@ -1066,6 +1069,57 @@ export interface Database {
         Update: Partial<Database['public']['Tables']['fleet_accounts']['Insert']>
         Relationships: []
       }
+      membership_programs: {
+        Row: {
+          id: string
+          tenant_id: string
+          name: string
+          description: string | null
+          stamps_required: number
+          is_active: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          name: string
+          description?: string | null
+          stamps_required: number
+          is_active?: boolean
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['membership_programs']['Insert']>
+        Relationships: []
+      }
+      membership_program_services: {
+        Row: {
+          program_id: string
+          service_id: string
+        }
+        Insert: {
+          program_id: string
+          service_id: string
+        }
+        Update: never
+        Relationships: []
+      }
+      membership_stamps: {
+        Row: {
+          id: string
+          tenant_id: string
+          customer_id: string
+          program_id: string
+          transaction_type: 'earn' | 'redeem' | 'adjustment'
+          stamp_delta: number
+          sale_id: string | null
+          reference_note: string | null
+          created_by: string | null
+          created_at: string
+        }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
     }
     Views: {
       ticket_board_entries: {
@@ -1148,6 +1202,15 @@ export interface Database {
         }
         Relationships: []
       }
+      membership_stamp_balances: {
+        Row: {
+          tenant_id: string
+          customer_id: string
+          program_id: string
+          stamps: number
+        }
+        Relationships: []
+      }
     }
     Functions: {
       complete_ticket: {
@@ -1176,6 +1239,10 @@ export interface Database {
       }
       record_fleet_settlement: {
         Args: { p_sale_id: string; p_method: string; p_amount: number; p_reference_note: string | null }
+        Returns: Json
+      }
+      adjust_membership_stamps: {
+        Args: { p_customer_id: string; p_program_id: string; p_stamp_delta: number; p_reason: string }
         Returns: Json
       }
       close_shift: {

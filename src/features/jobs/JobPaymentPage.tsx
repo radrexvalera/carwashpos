@@ -16,6 +16,7 @@ import { getSettings } from '@/features/settings/api/settingsApi'
 import { createSaleForJob, getJobForPayment } from './api/jobPaymentApi'
 import type { InventoryStockLevel } from '@/features/inventory/api/inventoryApi'
 import type { getFleetAccountForCustomer } from '@/features/fleet/api/fleetApi'
+import type { getRedeemableProgramsForServices } from '@/features/memberships/api/membershipsApi'
 
 type JobService = { id: string; service_id: string; unit_price: number; quantity: number; line_total: number; serviceName: string }
 type PaymentMethod = 'cash' | 'gcash' | 'maya' | 'bank_transfer' | 'card'
@@ -57,6 +58,7 @@ export function JobPaymentPage() {
     pointsEarned: number
     billingType: string
     paymentStatus: string
+    membershipDiscount: number
   } | null>(null)
   const [customer, setCustomer] = useState<{ id: string; full_name: string } | null>(null)
   const [loyaltyBalance, setLoyaltyBalance] = useState(0)
@@ -66,6 +68,9 @@ export function JobPaymentPage() {
   const [redemptionValue, setRedemptionValue] = useState(0.5)
   const [fleetAccount, setFleetAccount] = useState<Awaited<ReturnType<typeof getFleetAccountForCustomer>>>(null)
   const [billOnAccount, setBillOnAccount] = useState(false)
+  const [membershipPrograms, setMembershipPrograms] = useState<Awaited<ReturnType<typeof getRedeemableProgramsForServices>>>([])
+  const [membershipProgramId, setMembershipProgramId] = useState<string>('none')
+  const [membershipJobServiceId, setMembershipJobServiceId] = useState<string>('')
 
   useEffect(() => {
     if (!jobId || !profile) return
@@ -81,6 +86,7 @@ export function JobPaymentPage() {
         setPromotions(promos)
         setRedemptionValue(settings.loyalty_redemption_value)
         setFleetAccount(jobData.fleetAccount)
+        setMembershipPrograms(jobData.membershipPrograms)
       })
       .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to load job'))
       .finally(() => setLoading(false))
@@ -117,7 +123,21 @@ export function JobPaymentPage() {
   const pointsToRedeem = Math.min(requestedPoints, maxRedeemablePoints)
   const loyaltyDiscountPreview = Math.round(pointsToRedeem * redemptionValue * 100) / 100
 
-  const roundedTotal = Math.max(0, Math.round((afterPromotionTotal - loyaltyDiscountPreview) * 100) / 100)
+  // Client-side preview only -- create_sale() validates and computes the actual redemption.
+  const selectedMembership = membershipPrograms.find((p) => p.id === membershipProgramId)
+  const membershipEligibleLines = selectedMembership
+    ? jobServices.filter((js) => selectedMembership.eligibleServiceIds.includes(js.service_id))
+    : []
+  const membershipLine = membershipEligibleLines.find((js) => js.id === membershipJobServiceId)
+  const membershipDiscountPreview =
+    selectedMembership?.redeemable && membershipLine
+      ? Math.max(0, membershipLine.line_total - Number(discounts[membershipLine.id] || 0))
+      : 0
+
+  const roundedTotal = Math.max(
+    0,
+    Math.round((afterPromotionTotal - loyaltyDiscountPreview - membershipDiscountPreview) * 100) / 100,
+  )
   const paidSoFar = payments.reduce((sum, p) => sum + p.amount, 0)
   const remaining = Math.round((roundedTotal - paidSoFar) * 100) / 100
 
@@ -156,6 +176,10 @@ export function JobPaymentPage() {
         promotionId: promotionId !== 'none' ? promotionId : null,
         loyaltyPointsRedeemed: pointsToRedeem,
         billingType: billOnAccount ? 'on_account' : 'immediate',
+        membershipRedemption:
+          selectedMembership?.redeemable && membershipLine
+            ? { programId: selectedMembership.id, jobServiceId: membershipLine.id }
+            : null,
       })
       setResult({
         saleNumber: sale.sale_number,
@@ -165,6 +189,7 @@ export function JobPaymentPage() {
         pointsEarned: sale.loyalty_points_earned,
         billingType: sale.billing_type,
         paymentStatus: sale.payment_status,
+        membershipDiscount: sale.membership_discount_amount,
       })
       toast.success('Payment recorded')
     } catch (err) {
@@ -205,6 +230,9 @@ export function JobPaymentPage() {
             )}
             {result.pointsEarned > 0 && (
               <div className="text-sm text-muted-foreground">Points earned: +{result.pointsEarned}</div>
+            )}
+            {result.membershipDiscount > 0 && (
+              <div className="text-sm text-muted-foreground">Free service (stamp card): −{formatMoney(result.membershipDiscount)}</div>
             )}
             {result.billingType === 'on_account' && result.paymentStatus !== 'paid' && (
               <div className="text-sm text-muted-foreground">Billed to fleet account — {result.paymentStatus}</div>
@@ -270,6 +298,46 @@ export function JobPaymentPage() {
                   value={redeemPoints}
                   onChange={(e) => setRedeemPoints(e.target.value)}
                 />
+              </div>
+            )}
+            {membershipPrograms.length > 0 && (
+              <div className="flex flex-col gap-1.5">
+                <span className="text-sm text-muted-foreground">Stamp card</span>
+                <Select
+                  value={membershipProgramId}
+                  onValueChange={(v) => {
+                    setMembershipProgramId(v)
+                    const program = membershipPrograms.find((p) => p.id === v)
+                    const eligible = jobServices.filter((js) => program?.eligibleServiceIds.includes(js.service_id))
+                    setMembershipJobServiceId(eligible.length === 1 ? eligible[0].id : '')
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No redemption</SelectItem>
+                    {membershipPrograms.map((p) => (
+                      <SelectItem key={p.id} value={p.id} disabled={!p.redeemable}>
+                        {p.name} ({p.stamps}/{p.stamps_required}){!p.redeemable ? ' — not yet' : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedMembership?.redeemable && membershipEligibleLines.length > 1 && (
+                  <Select value={membershipJobServiceId} onValueChange={setMembershipJobServiceId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Which service is free?" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {membershipEligibleLines.map((js) => (
+                        <SelectItem key={js.id} value={js.id}>
+                          {js.serviceName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
             )}
             {fleetAccount && (
@@ -366,6 +434,12 @@ export function JobPaymentPage() {
             <div className="flex justify-between text-sm text-muted-foreground">
               <span>Points redeemed ({pointsToRedeem})</span>
               <span>−{formatMoney(loyaltyDiscountPreview)}</span>
+            </div>
+          )}
+          {membershipDiscountPreview > 0 && (
+            <div className="flex justify-between text-sm text-muted-foreground">
+              <span>Free service (stamp card)</span>
+              <span>−{formatMoney(membershipDiscountPreview)}</span>
             </div>
           )}
           <div className="flex justify-between text-lg font-semibold">

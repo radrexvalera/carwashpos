@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabase/client'
 import type { Json } from '@/lib/supabase/types'
 import { getLoyaltyBalance } from '@/features/loyalty/api/loyaltyApi'
 import { getFleetAccountForCustomer } from '@/features/fleet/api/fleetApi'
+import { getRedeemableProgramsForServices } from '@/features/memberships/api/membershipsApi'
 
 // Payment collection is online-only for v1: by the time a job shows on the queue board it's
 // already synced (the board only ever reads server data), and create_sale() needs real
@@ -41,6 +42,7 @@ export async function getJobForPayment(jobId: string) {
   let customer: { id: string; full_name: string } | null = null
   let loyaltyBalance = 0
   let fleetAccount: Awaited<ReturnType<typeof getFleetAccountForCustomer>> = null
+  let membershipPrograms: Awaited<ReturnType<typeof getRedeemableProgramsForServices>> = []
   if (vehicle.customer_id) {
     const { data: customerData, error: customerError } = await supabase
       .from('customers')
@@ -49,9 +51,10 @@ export async function getJobForPayment(jobId: string) {
       .single()
     if (customerError) throw customerError
     customer = customerData
-    ;[loyaltyBalance, fleetAccount] = await Promise.all([
+    ;[loyaltyBalance, fleetAccount, membershipPrograms] = await Promise.all([
       getLoyaltyBalance(customerData.id),
       getFleetAccountForCustomer(customerData.id),
+      getRedeemableProgramsForServices(customerData.id, serviceIds),
     ])
   }
 
@@ -63,6 +66,7 @@ export async function getJobForPayment(jobId: string) {
     customer,
     loyaltyBalance,
     fleetAccount,
+    membershipPrograms,
   }
 }
 
@@ -75,6 +79,7 @@ interface CreateSaleInput {
   promotionId?: string | null
   loyaltyPointsRedeemed?: number
   billingType?: 'immediate' | 'on_account'
+  membershipRedemption?: { programId: string; jobServiceId: string } | null
 }
 
 export async function createSaleForJob(input: CreateSaleInput) {
@@ -85,6 +90,9 @@ export async function createSaleForJob(input: CreateSaleInput) {
     promotion_id: input.promotionId || null,
     loyalty_points_redeemed: input.loyaltyPointsRedeemed || 0,
     billing_type: input.billingType || 'immediate',
+    membership_redemption: input.membershipRedemption
+      ? { program_id: input.membershipRedemption.programId, job_service_id: input.membershipRedemption.jobServiceId }
+      : null,
     line_items: [
       ...input.lineItems.map((l) => ({
         line_type: 'job_service',
@@ -114,5 +122,6 @@ export async function createSaleForJob(input: CreateSaleInput) {
     loyalty_points_earned: number
     billing_type: string
     payment_status: string
+    membership_discount_amount: number
   }
 }

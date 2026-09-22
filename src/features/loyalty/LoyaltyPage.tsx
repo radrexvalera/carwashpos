@@ -13,6 +13,7 @@ import {
   type Customer,
   type LoyaltyTransaction,
 } from './api/loyaltyApi'
+import { adjustMembershipStamps, getStampBalances, type StampBalance } from '@/features/memberships/api/membershipsApi'
 
 const TYPE_LABELS: Record<string, string> = {
   earn: 'Earned',
@@ -31,6 +32,10 @@ export function LoyaltyPage() {
   const [adjustPoints, setAdjustPoints] = useState('')
   const [adjustReason, setAdjustReason] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [stampBalances, setStampBalances] = useState<StampBalance[]>([])
+  const [stampAdjustProgram, setStampAdjustProgram] = useState<StampBalance | null>(null)
+  const [stampAdjustDelta, setStampAdjustDelta] = useState('')
+  const [stampAdjustReason, setStampAdjustReason] = useState('')
 
   async function runSearch() {
     try {
@@ -46,13 +51,35 @@ export function LoyaltyPage() {
     setQuery('')
     setLoading(true)
     try {
-      const [bal, txns] = await Promise.all([getLoyaltyBalance(customer.id), listLoyaltyTransactions(customer.id)])
+      const [bal, txns, stamps] = await Promise.all([
+        getLoyaltyBalance(customer.id),
+        listLoyaltyTransactions(customer.id),
+        getStampBalances(customer.id),
+      ])
       setBalance(bal)
       setTransactions(txns)
+      setStampBalances(stamps)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to load loyalty data')
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function submitStampAdjustment() {
+    if (!selected || !stampAdjustProgram || !stampAdjustDelta || !stampAdjustReason.trim()) return
+    setSubmitting(true)
+    try {
+      await adjustMembershipStamps(selected.id, stampAdjustProgram.programId, Number(stampAdjustDelta), stampAdjustReason.trim())
+      toast.success('Stamps adjusted')
+      setStampAdjustProgram(null)
+      setStampAdjustDelta('')
+      setStampAdjustReason('')
+      await selectCustomer(selected)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to adjust stamps')
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -148,6 +175,61 @@ export function LoyaltyPage() {
               </div>
             </CardContent>
           </Card>
+
+          {stampBalances.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Stamp cards</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-2">
+                {stampBalances.map((sb) => (
+                  <div key={sb.programId} className="flex items-center justify-between rounded-md border p-3">
+                    <div>
+                      <div className="font-medium">{sb.programName}</div>
+                      <div className="text-sm text-muted-foreground">
+                        {sb.stamps} / {sb.stampsRequired} stamps
+                        {sb.stamps >= sb.stampsRequired && ' — free service available!'}
+                      </div>
+                    </div>
+                    <Dialog
+                      open={stampAdjustProgram?.programId === sb.programId}
+                      onOpenChange={(o) => !o && setStampAdjustProgram(null)}
+                    >
+                      <DialogTrigger asChild>
+                        <Button size="sm" variant="outline" onClick={() => setStampAdjustProgram(sb)}>
+                          Adjust
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Adjust stamps — {sb.programName}</DialogTitle>
+                        </DialogHeader>
+                        <div className="flex flex-col gap-3">
+                          <Input
+                            type="number"
+                            placeholder="Stamps (negative to deduct)"
+                            value={stampAdjustDelta}
+                            onChange={(e) => setStampAdjustDelta(e.target.value)}
+                          />
+                          <Input
+                            placeholder="Reason (required)"
+                            value={stampAdjustReason}
+                            onChange={(e) => setStampAdjustReason(e.target.value)}
+                          />
+                          <Button
+                            onClick={submitStampAdjustment}
+                            disabled={submitting || !stampAdjustDelta || !stampAdjustReason.trim()}
+                          >
+                            Confirm adjustment
+                          </Button>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader>

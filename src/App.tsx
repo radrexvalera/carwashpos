@@ -33,6 +33,7 @@ import { SalesReportPage } from '@/features/reports/SalesReportPage'
 import { PromotionsPage } from '@/features/promotions/PromotionsPage'
 import { LoyaltyPage } from '@/features/loyalty/LoyaltyPage'
 import { FleetAccountsPage } from '@/features/fleet/FleetAccountsPage'
+import { MembershipProgramsPage } from '@/features/memberships/MembershipProgramsPage'
 
 export default function App() {
   return (
@@ -227,6 +228,14 @@ export default function App() {
                 element={
                   <RoleGuard allowedRoles={['admin', 'manager']}>
                     <FleetAccountsPage />
+                  </RoleGuard>
+                }
+              />
+              <Route
+                path="/admin/membership-programs"
+                element={
+                  <RoleGuard allowedRoles={['admin', 'manager']}>
+                    <MembershipProgramsPage />
                   </RoleGuard>
                 }
               />
