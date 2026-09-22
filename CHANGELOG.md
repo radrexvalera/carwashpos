@@ -2,6 +2,18 @@
 
 Major implementation changes, newest first. This tracks the new 8-phase roadmap (OtoKwikk Car Wash Management System); see the git history before 2026-09-21 for the earlier, since-superseded simple-POS build (Phases 0–2 of the original scope).
 
+## Phase 6c — Advanced: Memberships (stamp card) (2026-09-22)
+
+Third Phase 6 slice. The user clarified "memberships" isn't a subscription — it's the stamp card this business already runs: buy N of a service, the Nth is free, fully customizable (which service(s), how many stamps).
+
+- **Programs**: `membership_programs`/`membership_program_services` let an admin define a name, stamps-required count, and exactly which service(s) qualify (both for earning a stamp and for what the free reward applies to). Reuses the existing `can_manage_promotions` permission rather than adding a new one — its description has said "and the loyalty program" since Phase 1, and 6a already used it for loyalty's admin actions.
+- **Stamps**: `membership_stamps` is a new, parallel append-only ledger (`membership_stamp_balances` derived-sum view, same discipline as `loyalty_balances`/`fleet_account_balances`) — deliberately not an extension of `loyalty_transactions`, since a shop can run a peso-value points program and a stamp-card promo at the same time; they're different reward shapes (points scale with amount spent, a stamp is always +1 per qualifying visit).
+- **Redemption**: `create_sale()` gained an optional `membership_redemption` (a program + one specific job-service line), which zeroes that line's contribution to the total without rewriting `sale_items`' real list price — the same non-mutating layering already used for promotions. Redemption is **not** gated on payment status (a customer redeeming a stamp gets the free wash today regardless of whether the rest of an on-account invoice is paid later) — only **earning** is, and that was built correctly from the start this time (see below).
+- **Built the 6b lesson in from day one**: `record_fleet_settlement()` now mirrors the same deferred-earn logic for *both* loyalty points and membership stamps when an on-account sale finally reaches `payment_status = 'paid'`, correctly excluding whichever line (if any) was already redeemed at creation via a new `sales.membership_redeemed_job_service_id` column — the exact bug class 6b shipped and had to fix is handled proactively here instead.
+- Frontend: Membership Programs admin page (same CRUD/service-picker shape as Promotions), the Loyalty page extended to show stamp-card progress per program alongside points balance (one customer lookup for both reward mechanics), Collect Payment gained a stamp-card redemption selector with a line picker when multiple qualifying services are on the same job.
+- Verified end-to-end via SQL under real RLS: two qualifying paid sales earn exactly two stamps; redemption zeroes exactly the chosen line, deducts exactly `stamps_required`, and doesn't also earn a stamp on the redeemed line; redeeming with insufficient stamps is rejected; an unpaid on-account sale earns nothing until settled, then earns exactly once, correctly excluding a same-sale redemption from the count.
+- Not yet built (remaining Phase 6 slice): appointments + vehicle inspections (needs a Supabase Storage bucket built from scratch).
+
 ## Phase 6b — Advanced: Fleet Accounts (2026-09-22)
 
 Second Phase 6 slice: deferred/on-account billing for corporate fleet clients.
