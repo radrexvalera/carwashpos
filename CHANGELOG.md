@@ -2,6 +2,18 @@
 
 Major implementation changes, newest first. This tracks the new 8-phase roadmap (OtoKwikk Car Wash Management System); see the git history before 2026-09-21 for the earlier, since-superseded simple-POS build (Phases 0–2 of the original scope).
 
+## Phase 6d — Advanced: Appointments (2026-09-22)
+
+Fourth Phase 6 slice, and the last one before vehicle inspections (its own future pass — needs a new Supabase Storage bucket built from scratch). Bookings made ahead of time; staff "check in" an appointment later, which becomes a real job.
+
+- **The first Phase 6 slice to touch no ledger and add zero new RPCs.** Check-in reuses the existing `create_job()` directly (mapping `appointment_services` into its `services` payload) instead of duplicating its pricing/numbering/idempotency logic, then a plain RLS-gated `UPDATE` marks the appointment `converted` — the same shape job status transitions already use (confirmed by reading `jobStatusMutations.ts`), since there's no frozen financial data on this table to protect the way `sales` needs a tamper-guard trigger.
+- **Permission reuse, not a new one**: `appointments`/`appointment_services` are gated on the existing `can_manage_jobs` — appointments are pre-jobs, so anyone who can already create/manage a job can manage bookings.
+- **Scope decision**: an appointment always references a real, already-existing `vehicle_id`, same as a job — no separate "phone booking with no vehicle yet" shape. Booking for a car not yet in the system means resolving/creating that vehicle first, reusing `RegisterPage`'s exact vehicle-search-or-create flow rather than inventing a second one.
+- **Caught during implementation**: `created_by` is `not null` but this is the first Phase 6 table written via a plain client insert rather than a SECURITY DEFINER RPC — there's no server-side `auth.uid()` call to set it explicitly. Fixed with a column default (`default auth.uid()`) before it could ship as a not-null violation.
+- Frontend: Appointments page (date picker + day list, a New Appointment dialog, a Check In dialog with a simplified per-service crew picker), added to nav with **no role restriction** — matches Register/Job Queue, since any floor staff should see upcoming bookings, not just admin/manager.
+- Verified end-to-end via SQL under real RLS: a 2-service appointment checks in via `create_job()` into a real job with both lines intact, linked back via `converted_job_id`; cancel/no-show are plain RLS-gated updates; the `created_by` default resolves correctly on an insert that omits it entirely (the actual shape the frontend uses).
+- Not yet built (final Phase 6 slice): vehicle inspections — pre-service condition photos/notes, needs a new Supabase Storage bucket since none exists anywhere in this repo yet.
+
 ## Phase 6c — Advanced: Memberships (stamp card) (2026-09-22)
 
 Third Phase 6 slice. The user clarified "memberships" isn't a subscription — it's the stamp card this business already runs: buy N of a service, the Nth is free, fully customizable (which service(s), how many stamps).
