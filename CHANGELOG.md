@@ -2,6 +2,16 @@
 
 Major implementation changes, newest first. This tracks the new 8-phase roadmap (OtoKwikk Car Wash Management System); see the git history before 2026-09-21 for the earlier, since-superseded simple-POS build (Phases 0–2 of the original scope).
 
+## Phase 7b — Offline/PWA Hardening: Installability + App-Shell Caching (2026-09-23)
+
+Second Phase 7 slice. Confirmed zero PWA infrastructure existed before this: no manifest, no service worker, no PWA dependency, no manifest link/theme-color meta tag in `index.html`.
+
+- Added `public/manifest.webmanifest` (name, icons, `display: standalone`, theme color matching the brand mark) and real PNG icons (192/512/maskable) generated from the existing `public/favicon.svg` via a one-off `scripts/generate-pwa-icons.mjs` (`sharp`, a devDependency — not wired into the regular build since icons change rarely).
+- **Hand-rolled service worker (`public/sw.js`), not `vite-plugin-pwa`**: this project is on Vite 8.3.0, newer than that plugin's verified compatibility, so a small (~30-line) hand-written service worker avoided an unverified peer-dependency gamble on a live production app — consistent with this project's existing preference for explicit code over generated tooling.
+- Caches **same-origin GET requests only**, network-first with a cache fallback, warming automatically through ordinary daily use. **Never touches the Supabase API or any other cross-origin request** — this app already has a comprehensive offline *data* layer (Dexie outbox + mutation queue, hardened in 7a); this slice is specifically about installability and the app shell loading with zero connectivity, and the two must never overlap. Registration (`src/main.tsx`) is gated to production builds only so it can't interfere with Vite's dev-server HMR.
+- Verified: `tsc`/`oxlint`/`build` clean; curl-verified the built manifest/service-worker/icons serve with correct content; the user confirmed in a real browser (`npm run preview`) that the manifest and service worker are detected/active in DevTools, an install affordance appears, and the app shell still renders after a reload with DevTools set to Offline.
+- Not yet built (remaining Phase 7 slice): fuller sync-engine hardening (backoff/jitter between retry attempts, a dedicated sync-failures panel beyond the single global `SyncStatusBadge`).
+
 ## Phase 7a — Offline/PWA Hardening: Offline Job Visibility (2026-09-23)
 
 First slice of Phase 7. A job created while offline previously had no number and was fully invisible on the Job Queue board until it synced — `db.jobs` (the local outbox) and `db.boardJobs` (the server-synced board cache) were two separate Dexie tables with no merge logic between them.
