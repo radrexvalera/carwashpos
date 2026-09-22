@@ -8,13 +8,17 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { formatMoney } from '@/lib/money'
+import { useTenant } from '@/app/TenantProvider'
 import { getActiveShift } from '@/features/shifts/api/shiftsApi'
+import { listActivePromotionsWithServices } from '@/features/promotions/api/promotionsApi'
+import { getSettings } from '@/features/settings/api/settingsApi'
 import { createSaleForJob, getJobForPayment } from './api/jobPaymentApi'
 import type { InventoryStockLevel } from '@/features/inventory/api/inventoryApi'
 
-type JobService = { id: string; unit_price: number; quantity: number; line_total: number; serviceName: string }
+type JobService = { id: string; service_id: string; unit_price: number; quantity: number; line_total: number; serviceName: string }
 type PaymentMethod = 'cash' | 'gcash' | 'maya' | 'bank_transfer' | 'card'
 type ProductLine = { itemId: string; name: string; unitPrice: number; quantity: number }
+type ActivePromotion = Awaited<ReturnType<typeof listActivePromotionsWithServices>>[number]
 
 const METHOD_LABELS: Record<PaymentMethod, string> = {
   cash: 'Cash',
@@ -27,6 +31,7 @@ const METHOD_LABELS: Record<PaymentMethod, string> = {
 export function JobPaymentPage() {
   const { jobId } = useParams<{ jobId: string }>()
   const navigate = useNavigate()
+  const { profile } = useTenant()
 
   const [loading, setLoading] = useState(true)
   const [shiftId, setShiftId] = useState<string | null>(null)
@@ -42,28 +47,70 @@ export function JobPaymentPage() {
   const [amount, setAmount] = useState('')
   const [referenceNote, setReferenceNote] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const [result, setResult] = useState<{ saleNumber: string; total: number } | null>(null)
+  const [result, setResult] = useState<{
+    saleNumber: string
+    total: number
+    promotionDiscount: number
+    loyaltyDiscount: number
+    pointsEarned: number
+  } | null>(null)
+  const [customer, setCustomer] = useState<{ id: string; full_name: string } | null>(null)
+  const [loyaltyBalance, setLoyaltyBalance] = useState(0)
+  const [promotions, setPromotions] = useState<ActivePromotion[]>([])
+  const [promotionId, setPromotionId] = useState<string>('none')
+  const [redeemPoints, setRedeemPoints] = useState('')
+  const [redemptionValue, setRedemptionValue] = useState(0.5)
 
   useEffect(() => {
-    if (!jobId) return
-    Promise.all([getJobForPayment(jobId), getActiveShift()])
-      .then(([jobData, shift]) => {
+    if (!jobId || !profile) return
+    Promise.all([getJobForPayment(jobId), getActiveShift(), listActivePromotionsWithServices(), getSettings(profile.tenantId)])
+      .then(([jobData, shift, promos, settings]) => {
         setJobNumber(jobData.job.job_number)
         setPlate(jobData.vehicle.plate_number)
         setJobServices(jobData.jobServices)
         setRetailItems(jobData.retailItems)
         setShiftId(shift?.id ?? null)
+        setCustomer(jobData.customer)
+        setLoyaltyBalance(jobData.loyaltyBalance)
+        setPromotions(promos)
+        setRedemptionValue(settings.loyalty_redemption_value)
       })
       .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to load job'))
       .finally(() => setLoading(false))
-  }, [jobId])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobId, profile?.tenantId])
 
   const servicesTotal = jobServices.reduce((sum, js) => {
     const discount = Number(discounts[js.id] || 0)
     return sum + Math.max(0, js.line_total - discount)
   }, 0)
   const productsTotal = productLines.reduce((sum, p) => sum + p.unitPrice * p.quantity, 0)
-  const roundedTotal = Math.round((servicesTotal + productsTotal) * 100) / 100
+  const preDiscountTotal = Math.round((servicesTotal + productsTotal) * 100) / 100
+
+  // Client-side preview only -- create_sale() is what actually computes and enforces this.
+  const selectedPromotion = promotions.find((p) => p.id === promotionId)
+  let promotionEligibleBase = preDiscountTotal
+  if (selectedPromotion && selectedPromotion.restrictedServiceIds.length > 0) {
+    promotionEligibleBase = jobServices
+      .filter((js) => selectedPromotion.restrictedServiceIds.includes(js.service_id))
+      .reduce((sum, js) => sum + Math.max(0, js.line_total - Number(discounts[js.id] || 0)), 0)
+  }
+  const promotionMet = !selectedPromotion || selectedPromotion.min_spend == null || promotionEligibleBase >= selectedPromotion.min_spend
+  const promotionDiscountPreview =
+    selectedPromotion && promotionMet
+      ? selectedPromotion.discount_type === 'percentage'
+        ? Math.round(((promotionEligibleBase * selectedPromotion.discount_value) / 100) * 100) / 100
+        : Math.min(selectedPromotion.discount_value, promotionEligibleBase)
+      : 0
+
+  const afterPromotionTotal = Math.round((preDiscountTotal - promotionDiscountPreview) * 100) / 100
+  const requestedPoints = Math.max(0, Math.floor(Number(redeemPoints) || 0))
+  const maxRedeemablePoints =
+    redemptionValue > 0 ? Math.min(loyaltyBalance, Math.floor(afterPromotionTotal / redemptionValue)) : 0
+  const pointsToRedeem = Math.min(requestedPoints, maxRedeemablePoints)
+  const loyaltyDiscountPreview = Math.round(pointsToRedeem * redemptionValue * 100) / 100
+
+  const roundedTotal = Math.max(0, Math.round((afterPromotionTotal - loyaltyDiscountPreview) * 100) / 100)
   const paidSoFar = payments.reduce((sum, p) => sum + p.amount, 0)
   const remaining = Math.round((roundedTotal - paidSoFar) * 100) / 100
 
@@ -99,8 +146,16 @@ export function JobPaymentPage() {
         lineItems: jobServices.map((js) => ({ jobServiceId: js.id, discountAmount: Number(discounts[js.id] || 0) })),
         productLines: productLines.map((p) => ({ itemId: p.itemId, quantity: p.quantity })),
         payments,
+        promotionId: promotionId !== 'none' ? promotionId : null,
+        loyaltyPointsRedeemed: pointsToRedeem,
       })
-      setResult({ saleNumber: sale.sale_number, total: sale.total })
+      setResult({
+        saleNumber: sale.sale_number,
+        total: sale.total,
+        promotionDiscount: sale.promotion_discount_amount,
+        loyaltyDiscount: sale.loyalty_discount_amount,
+        pointsEarned: sale.loyalty_points_earned,
+      })
       toast.success('Payment recorded')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to record payment')
@@ -132,6 +187,15 @@ export function JobPaymentPage() {
             <div className="text-lg font-semibold">Payment recorded</div>
             <div className="text-muted-foreground">{result.saleNumber}</div>
             <div className="text-2xl font-semibold">{formatMoney(result.total)}</div>
+            {result.promotionDiscount > 0 && (
+              <div className="text-sm text-muted-foreground">Promotion discount: {formatMoney(result.promotionDiscount)}</div>
+            )}
+            {result.loyaltyDiscount > 0 && (
+              <div className="text-sm text-muted-foreground">Points redeemed: {formatMoney(result.loyaltyDiscount)}</div>
+            )}
+            {result.pointsEarned > 0 && (
+              <div className="text-sm text-muted-foreground">Points earned: +{result.pointsEarned}</div>
+            )}
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => window.print()}>
                 Print receipt
@@ -150,8 +214,54 @@ export function JobPaymentPage() {
         <h1 className="text-2xl font-semibold">Collect Payment</h1>
         <p className="text-muted-foreground">
           {jobNumber} · {plate}
+          {customer && ` · ${customer.full_name}`}
         </p>
       </div>
+
+      {customer && (
+        <Card>
+          <CardContent className="flex flex-col gap-3 pt-6">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Loyalty points balance</span>
+              <span className="font-medium">{loyaltyBalance}</span>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <span className="text-sm text-muted-foreground">Promotion</span>
+              <Select value={promotionId} onValueChange={setPromotionId}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No promotion</SelectItem>
+                  {promotions.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedPromotion && !promotionMet && (
+                <span className="text-xs text-destructive">
+                  Needs at least {formatMoney(selectedPromotion.min_spend ?? 0)} on eligible items.
+                </span>
+              )}
+            </div>
+            {loyaltyBalance > 0 && (
+              <div className="flex flex-col gap-1.5">
+                <span className="text-sm text-muted-foreground">Redeem points (max {maxRedeemablePoints})</span>
+                <Input
+                  type="number"
+                  min="0"
+                  max={maxRedeemablePoints}
+                  placeholder="0"
+                  value={redeemPoints}
+                  onChange={(e) => setRedeemPoints(e.target.value)}
+                />
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
@@ -219,7 +329,19 @@ export function JobPaymentPage() {
       )}
 
       <Card>
-        <CardContent className="pt-6">
+        <CardContent className="flex flex-col gap-1 pt-6">
+          {promotionDiscountPreview > 0 && (
+            <div className="flex justify-between text-sm text-muted-foreground">
+              <span>Promotion discount</span>
+              <span>−{formatMoney(promotionDiscountPreview)}</span>
+            </div>
+          )}
+          {loyaltyDiscountPreview > 0 && (
+            <div className="flex justify-between text-sm text-muted-foreground">
+              <span>Points redeemed ({pointsToRedeem})</span>
+              <span>−{formatMoney(loyaltyDiscountPreview)}</span>
+            </div>
+          )}
           <div className="flex justify-between text-lg font-semibold">
             <span>Total</span>
             <span>{formatMoney(roundedTotal)}</span>

@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase/client'
 import type { Json } from '@/lib/supabase/types'
+import { getLoyaltyBalance } from '@/features/loyalty/api/loyaltyApi'
 
 // Payment collection is online-only for v1: by the time a job shows on the queue board it's
 // already synced (the board only ever reads server data), and create_sale() needs real
@@ -36,11 +37,26 @@ export async function getJobForPayment(jobId: string) {
     .eq('is_active', true)
   if (retailError) throw retailError
 
+  let customer: { id: string; full_name: string } | null = null
+  let loyaltyBalance = 0
+  if (vehicle.customer_id) {
+    const { data: customerData, error: customerError } = await supabase
+      .from('customers')
+      .select('id, full_name')
+      .eq('id', vehicle.customer_id)
+      .single()
+    if (customerError) throw customerError
+    customer = customerData
+    loyaltyBalance = await getLoyaltyBalance(customerData.id)
+  }
+
   return {
     job,
     vehicle,
     jobServices: (jobServices ?? []).map((js) => ({ ...js, serviceName: serviceNameById.get(js.service_id) ?? 'Service' })),
     retailItems: retailItems ?? [],
+    customer,
+    loyaltyBalance,
   }
 }
 
@@ -50,6 +66,8 @@ interface CreateSaleInput {
   lineItems: { jobServiceId: string; discountAmount: number }[]
   productLines: { itemId: string; quantity: number }[]
   payments: { method: string; amount: number; referenceNote?: string }[]
+  promotionId?: string | null
+  loyaltyPointsRedeemed?: number
 }
 
 export async function createSaleForJob(input: CreateSaleInput) {
@@ -57,6 +75,8 @@ export async function createSaleForJob(input: CreateSaleInput) {
     client_generated_id: crypto.randomUUID(),
     shift_id: input.shiftId,
     job_id: input.jobId,
+    promotion_id: input.promotionId || null,
+    loyalty_points_redeemed: input.loyaltyPointsRedeemed || 0,
     line_items: [
       ...input.lineItems.map((l) => ({
         line_type: 'job_service',
@@ -74,5 +94,15 @@ export async function createSaleForJob(input: CreateSaleInput) {
 
   const { data, error } = await supabase.rpc('create_sale', { payload: payload as unknown as Json })
   if (error) throw error
-  return data as { id: string; sale_number: string; status: string; total: number; created_at: string }
+  return data as {
+    id: string
+    sale_number: string
+    status: string
+    total: number
+    created_at: string
+    promotion_discount_amount: number
+    loyalty_discount_amount: number
+    loyalty_points_redeemed: number
+    loyalty_points_earned: number
+  }
 }

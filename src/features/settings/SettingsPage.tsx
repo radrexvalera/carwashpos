@@ -19,6 +19,8 @@ const settingsSchema = z.object({
   numberingPrefix: z.string().min(1, 'Required').max(10),
   receiptHeader: z.string().optional(),
   receiptFooter: z.string().optional(),
+  loyaltyEarnRate: z.coerce.number().min(0, 'Must be 0 or more'),
+  loyaltyRedemptionValue: z.coerce.number().min(0, 'Must be 0 or more'),
 })
 
 type SettingsFormValues = z.infer<typeof settingsSchema>
@@ -38,6 +40,8 @@ export function SettingsPage() {
       numberingPrefix: 'CW',
       receiptHeader: '',
       receiptFooter: '',
+      loyaltyEarnRate: 1,
+      loyaltyRedemptionValue: 0.5,
     },
   })
 
@@ -53,6 +57,8 @@ export function SettingsPage() {
           numberingPrefix: s.numbering_prefix,
           receiptHeader: s.receipt_header ?? '',
           receiptFooter: s.receipt_footer ?? '',
+          loyaltyEarnRate: s.loyalty_earn_rate,
+          loyaltyRedemptionValue: s.loyalty_redemption_value,
         }),
       )
       .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to load settings'))
@@ -72,6 +78,8 @@ export function SettingsPage() {
         numbering_prefix: values.numberingPrefix,
         receipt_header: values.receiptHeader || null,
         receipt_footer: values.receiptFooter || null,
+        loyalty_earn_rate: values.loyaltyEarnRate,
+        loyalty_redemption_value: values.loyaltyRedemptionValue,
       })
       toast.success('Settings saved')
     } catch (err) {
@@ -193,6 +201,35 @@ export function SettingsPage() {
                   </FormItem>
                 )}
               />
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="loyaltyEarnRate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Loyalty points earned per ₱1 spent</FormLabel>
+                      <FormControl>
+                        <Input type="number" step="0.0001" min="0" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="loyaltyRedemptionValue"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Peso value per point redeemed</FormLabel>
+                      <FormControl>
+                        <Input type="number" step="0.0001" min="0" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
 
               <Button type="submit" disabled={submitting} className="w-fit">
                 Save settings

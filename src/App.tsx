@@ -30,6 +30,8 @@ import { ServiceRecipesPage } from '@/features/inventory/ServiceRecipesPage'
 import { ExpensesPage } from '@/features/expenses/ExpensesPage'
 import { ExpenseCategoriesPage } from '@/features/expenses/ExpenseCategoriesPage'
 import { SalesReportPage } from '@/features/reports/SalesReportPage'
+import { PromotionsPage } from '@/features/promotions/PromotionsPage'
+import { LoyaltyPage } from '@/features/loyalty/LoyaltyPage'
 
 export default function App() {
   return (
@@ -200,6 +202,22 @@ export default function App() {
                 element={
                   <RoleGuard allowedRoles={['admin', 'manager']}>
                     <SalesReportPage />
+                  </RoleGuard>
+                }
+              />
+              <Route
+                path="/admin/promotions"
+                element={
+                  <RoleGuard allowedRoles={['admin', 'manager']}>
+                    <PromotionsPage />
+                  </RoleGuard>
+                }
+              />
+              <Route
+                path="/loyalty"
+                element={
+                  <RoleGuard allowedRoles={['admin', 'manager']}>
+                    <LoyaltyPage />
                   </RoleGuard>
                 }
               />

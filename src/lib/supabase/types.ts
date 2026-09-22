@@ -146,6 +146,8 @@ export interface Database {
           receipt_header: string | null
           receipt_footer: string | null
           numbering_prefix: string
+          loyalty_earn_rate: number
+          loyalty_redemption_value: number
           updated_at: string
         }
         Insert: {
@@ -159,6 +161,8 @@ export interface Database {
           receipt_header?: string | null
           receipt_footer?: string | null
           numbering_prefix?: string
+          loyalty_earn_rate?: number
+          loyalty_redemption_value?: number
           updated_at?: string
         }
         Update: Partial<Database['public']['Tables']['settings']['Insert']>
@@ -820,6 +824,11 @@ export interface Database {
           refunded_by: string | null
           refunded_at: string | null
           refund_reason: string | null
+          customer_id: string | null
+          promotion_id: string | null
+          promotion_discount_amount: number
+          loyalty_points_redeemed: number
+          loyalty_discount_amount: number
         }
         Insert: never
         Update: never
@@ -975,6 +984,64 @@ export interface Database {
         Update: never
         Relationships: []
       }
+      promotions: {
+        Row: {
+          id: string
+          tenant_id: string
+          name: string
+          description: string | null
+          discount_type: 'percentage' | 'fixed_amount'
+          discount_value: number
+          min_spend: number | null
+          starts_at: string | null
+          ends_at: string | null
+          is_active: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          name: string
+          description?: string | null
+          discount_type: 'percentage' | 'fixed_amount'
+          discount_value: number
+          min_spend?: number | null
+          starts_at?: string | null
+          ends_at?: string | null
+          is_active?: boolean
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['promotions']['Insert']>
+        Relationships: []
+      }
+      promotion_services: {
+        Row: {
+          promotion_id: string
+          service_id: string
+        }
+        Insert: {
+          promotion_id: string
+          service_id: string
+        }
+        Update: never
+        Relationships: []
+      }
+      loyalty_transactions: {
+        Row: {
+          id: string
+          tenant_id: string
+          customer_id: string
+          transaction_type: 'earn' | 'redeem' | 'adjustment'
+          points_delta: number
+          sale_id: string | null
+          reference_note: string | null
+          created_by: string | null
+          created_at: string
+        }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
     }
     Views: {
       ticket_board_entries: {
@@ -1040,6 +1107,14 @@ export interface Database {
         }
         Relationships: []
       }
+      loyalty_balances: {
+        Row: {
+          tenant_id: string
+          customer_id: string
+          balance: number
+        }
+        Relationships: []
+      }
     }
     Functions: {
       complete_ticket: {
@@ -1060,6 +1135,10 @@ export interface Database {
       }
       create_sale: {
         Args: { payload: Json }
+        Returns: Json
+      }
+      adjust_loyalty_points: {
+        Args: { p_customer_id: string; p_points_delta: number; p_reason: string }
         Returns: Json
       }
       close_shift: {

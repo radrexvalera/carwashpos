@@ -105,6 +105,17 @@ export function SalesReportPage() {
                 )}
               </CardContent>
             </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <div className="text-sm text-muted-foreground">Promotions & loyalty given</div>
+                <div className="text-xl font-semibold">
+                  {formatMoney(sales.promotionDiscountTotal + sales.loyaltyDiscountTotal)}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {formatMoney(sales.promotionDiscountTotal)} promo · {formatMoney(sales.loyaltyDiscountTotal)} loyalty
+                </div>
+              </CardContent>
+            </Card>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
