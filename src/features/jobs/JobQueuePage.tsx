@@ -8,8 +8,9 @@ import { formatMoney } from '@/lib/money'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import type { BoardJob } from '@/lib/offline/types'
+import type { BoardJob, LocalJob } from '@/lib/offline/types'
 import { InspectionDialog } from '@/features/inspections/InspectionDialog'
+import { retryFailedJob } from './api/jobMutations'
 import { completeJobOffline, updateJobStatus } from './api/jobStatusMutations'
 import { useJobBoardSync } from './hooks/useJobBoardSync'
 
@@ -35,6 +36,14 @@ export function JobQueuePage() {
     [profile?.tenantId],
     [],
   )
+  // The local outbox -- a job written here immediately on creation, well before (or entirely
+  // without) a network round-trip. Merged into the Waiting column below so a job created offline
+  // doesn't simply vanish from the board until it syncs.
+  const localJobs = useLiveQuery(
+    () => db.jobs.where('tenantId').equals(profile?.tenantId ?? '').toArray(),
+    [profile?.tenantId],
+    [],
+  )
 
   const [inspectingJob, setInspectingJob] = useState<BoardJob | null>(null)
 
@@ -53,6 +62,23 @@ export function JobQueuePage() {
     for (const jobs of map.values()) jobs.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
     return map
   }, [boardJobs])
+
+  // Not yet reflected in boardJobs -- either still syncing/failed, or the mutation succeeded but
+  // the board cache hasn't picked up the real row yet (closes that small timing gap too, so a
+  // just-synced job doesn't flicker out of view for a few seconds before its real card appears).
+  const pendingLocalJobs = useMemo(() => {
+    const syncedIds = new Set((boardJobs ?? []).map((j) => j.clientGeneratedId))
+    return (localJobs ?? []).filter((j) => j.syncStatus !== 'synced' || !syncedIds.has(j.clientGeneratedId))
+  }, [localJobs, boardJobs])
+
+  async function handleRetry(job: LocalJob) {
+    try {
+      await retryFailedJob(job.clientGeneratedId)
+      toast.success('Retrying sync…')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to retry')
+    }
+  }
 
   async function advance(job: BoardJob, nextStatus: BoardJob['status'], bayId?: string) {
     if (!profile) return
@@ -91,9 +117,45 @@ export function JobQueuePage() {
         {COLUMNS.map((col) => (
           <div key={col.status} className="flex flex-col gap-2">
             <div className="text-sm font-semibold text-muted-foreground">
-              {col.label} ({byColumn.get(col.status)?.length ?? 0})
+              {col.label} ({(byColumn.get(col.status)?.length ?? 0) + (col.status === 'waiting' ? pendingLocalJobs.length : 0)})
             </div>
             <div className="flex flex-col gap-2">
+              {col.status === 'waiting' &&
+                pendingLocalJobs.map((job) => (
+                  <Card key={job.clientGeneratedId} className="border-dashed">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">Pending</span>
+                        {job.syncStatus === 'failed' ? (
+                          <Badge variant="destructive">Sync failed</Badge>
+                        ) : (
+                          <Badge variant="secondary">Syncing…</Badge>
+                        )}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="flex flex-col gap-2 text-sm">
+                      <div className="font-medium">
+                        {job.vehiclePlate} · {job.vehicleSizeName}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {job.vehicleMake} {job.vehicleModel}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {job.services.map((s) => s.serviceName).join(', ')}
+                      </div>
+                      <div className="text-sm font-medium">{formatMoney(job.estimatedTotal)}</div>
+                      <div className="text-xs text-muted-foreground">{elapsed(job.createdAt)}</div>
+                      {job.syncStatus === 'failed' && (
+                        <>
+                          {job.syncError && <div className="text-xs text-destructive">{job.syncError}</div>}
+                          <Button size="sm" variant="outline" onClick={() => handleRetry(job)}>
+                            Retry
+                          </Button>
+                        </>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
               {(byColumn.get(col.status) ?? []).map((job) => (
                 <Card key={job.id}>
                   <CardHeader className="pb-2">

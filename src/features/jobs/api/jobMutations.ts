@@ -63,3 +63,17 @@ export async function createJobOffline(input: CreateJobInput) {
 
   return clientGeneratedId
 }
+
+// A mutation that hit MAX_RETRIES is left 'failed' forever with no automatic retry -- this is the
+// one manual recovery path: reset both the job's own sync status and its queued mutation(s), then
+// let the existing sync engine take it from there. No changes to syncEngine.ts itself.
+export async function retryFailedJob(clientGeneratedId: string) {
+  await db.jobs.update(clientGeneratedId, { syncStatus: 'pending', syncError: undefined })
+
+  const failedMutations = await db.mutationQueue.where('clientGeneratedId').equals(clientGeneratedId).and((m) => m.status === 'failed').toArray()
+  for (const mutation of failedMutations) {
+    await db.mutationQueue.update(mutation.id, { status: 'pending', retryCount: 0, lastError: undefined })
+  }
+
+  void flushMutationQueue()
+}
