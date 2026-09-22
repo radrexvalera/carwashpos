@@ -2,6 +2,16 @@
 
 Major implementation changes, newest first. This tracks the new 8-phase roadmap (OtoKwikk Car Wash Management System); see the git history before 2026-09-21 for the earlier, since-superseded simple-POS build (Phases 0–2 of the original scope).
 
+## Phase 7c — Offline/PWA Hardening: Sync Engine Hardening (2026-09-23)
+
+Third and final Phase 7 slice — **Phase 7 (offline/PWA hardening) is now complete.**
+
+- **Backoff with jitter**: `flushMutationQueue()` previously retried a failed mutation up to `MAX_RETRIES = 5` with zero delay between attempts. This only mattered for the "online but this specific request failed transiently" case (a full connectivity drop was already correctly gated on the `online` event) — but that case got hammered five times in immediate succession instead of being given any time to clear. Added exponential backoff with jitter (3s/6s/12s/24s/48s, capped at 60s) via a new `nextAttemptAt` field, filtered in-memory (the mutation queue is always small, no new Dexie index needed). A brand-new mutation is unaffected — still processed immediately, so the common healthy-connection near-instant-sync path doesn't change.
+- **Failures panel**: an exhausted mutation was `'failed'` forever with no way to see or retry it except Phase 7a's job-card-specific button (job entities only — a failed legacy `ticket_*` mutation had zero recovery path). Generalized `retryMutation(mutationId)` is now the one place that knows how to "un-fail" any queue entry; `retryFailedJob()` was refactored to delegate to it instead of duplicating the reset logic. New `SyncFailuresDialog` lists every failed entry (label, error, last-attempt time, a best-effort plate lookup for job entities) with per-row and retry-all actions, opened from the existing "N sync issue(s)" badge rather than a new route.
+- Verified by the user directly in the running app: forcing a mutation to `'failed'` via IndexedDB shows it in the dialog with a working Retry button; a genuinely failing request now visibly waits between attempts; normal healthy-connection sync is unaffected.
+
+**Phase 7 summary**: 7a offline job visibility (a job created offline now shows as a labeled pending card instead of vanishing until sync), 7b PWA installability + app-shell caching (installable, loads with zero connectivity, via a hand-rolled service worker that never touches the Supabase API), 7c this slice. Remaining on the roadmap: Phase 8 (production hardening — this app is also not yet deployed anywhere).
+
 ## Phase 7b — Offline/PWA Hardening: Installability + App-Shell Caching (2026-09-23)
 
 Second Phase 7 slice. Confirmed zero PWA infrastructure existed before this: no manifest, no service worker, no PWA dependency, no manifest link/theme-color meta tag in `index.html`.
