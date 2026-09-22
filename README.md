@@ -83,8 +83,14 @@ Not yet configured. Target is Netlify or Vercel (static SPA build) once the app 
 - Every offline-created record carries a client-generated UUID as its idempotency key, so a retried sync (e.g. after a dropped response) is a safe no-op instead of a duplicate.
 - Server-side, any shared mutable value (stock, job/ticket numbering) is always updated via a relative delta inside a Postgres function, never an absolute value sent from the client — this is what makes two devices syncing concurrently safe without conflict-resolution logic.
 - **Exception**: collecting payment (`create_sale`) is online-only. It needs real, already-synced `job_service` ids — a deliberate scope line for v1, not something Phase 7 changes.
-- A job created offline shows immediately on the Job Queue board as a labeled pending card (no number yet, "Syncing…") rather than being invisible until sync — see Phase 7a below.
+- A job created offline shows immediately on the Job Queue board as a labeled pending card (no number yet, "Syncing…") rather than being invisible until sync (Phase 7a).
 - A mutation that exhausts its retries is left `'failed'` with a manual "Retry" action on its pending card (Phase 7a) — the sync engine itself still has no backoff/jitter between attempts, and there's no broader failures panel yet (later Phase 7 work).
+
+## PWA / installability
+
+Implemented (roadmap Phase 7b). The app is installable (a manifest + icons generated from the existing brand mark) and its shell (JS/CSS/HTML) loads with zero connectivity via a service worker (`public/sw.js`), gated to production builds only. **Hand-rolled, not `vite-plugin-pwa`** — this project is on Vite 8.3.0, newer than that plugin's verified compatibility as of when this was built, so a small (~30-line) hand-written service worker avoided an unverified peer-dependency gamble on a live production app; it's simple enough to fully understand and matches this project's existing preference for explicit code over generated tooling (hand-maintained `types.ts`, hand-written SQL migrations). Revisit `vite-plugin-pwa` later if its Vite 8 support firms up.
+
+The service worker caches **same-origin GET requests only**, network-first with a cache fallback — it never touches the Supabase API or any other cross-origin request, since the existing Dexie/mutation-queue outbox above already owns that offline path correctly and the two must never overlap. Icons are regenerated with `node scripts/generate-pwa-icons.mjs` (rasterizes `public/favicon.svg` via `sharp`, a devDependency) if the logo ever changes — not run automatically on every build.
 
 ## User roles
 
