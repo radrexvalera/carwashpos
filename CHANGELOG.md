@@ -2,6 +2,24 @@
 
 Major implementation changes, newest first. This tracks the new 8-phase roadmap (OtoKwikk Car Wash Management System); see the git history before 2026-09-21 for the earlier, since-superseded simple-POS build (Phases 0–2 of the original scope).
 
+## Phase 8a — Production Hardening: Security fixes + code-level hardening (2026-09-23)
+
+First Phase 8 slice. A full audit of every RLS policy and `SECURITY DEFINER` function across all 50 prior migrations, independently verified by direct file inspection rather than trusted at face value, turned up two genuinely critical, live findings — folded into this slice as urgent fixes rather than deferred:
+
+- **`has_permission()` had no tenant scoping** (`0009_rbac_schema.sql`) — unlike its sibling `current_employee_id()`, it joined `employees e where e.user_id = auth.uid()` with no `e.tenant_id = current_tenant_id()` filter. Since `employees.user_id` is only unique *per tenant*, the same real user can legitimately hold an `employees` row in more than one tenant — a live cross-tenant privilege-escalation vector that activates the instant a second tenant is ever onboarded (an explicit goal of this app's architecture). Inert today with only one tenant; fixed now while inert rather than retroactively once a second tenant's data is at risk.
+- **`record_inventory_transaction()` had zero authorization check and was never actually revoked from `PUBLIC`** — Postgres grants `EXECUTE` to `PUBLIC` by default; every other write-capable function here got an explicit `grant execute ... to authenticated` marking the author's intent, but this one had no grant *and* no revoke, despite its own comment claiming it wasn't exposed directly. **Exploitable today** by any logged-in user regardless of role, via a direct `supabase.rpc('record_inventory_transaction', ...)` call, to fabricate arbitrary stock-ledger entries bypassing `adjust_inventory_stock()`'s `can_manage_inventory` gate.
+- Also fixed, same audit: revoked `PUBLIC` execute on the dead legacy `complete_ticket()` RPC (same gap, inert only because its tables were dropped in `0035`); added parent-tenant-ownership checks to 7 insert/update policies that previously checked only their own `tenant_id`, not their FK target's (`job_service_attendants`, `job_status_history`, `payroll_adjustments`, `appointments`, `vehicle_inspections`, `vehicle_inspection_photos`, `vehicles`) — matching the `exists(...)` guard pattern every other child/junction table already used; added the standard null-tenant guard to `record_fleet_settlement()`, matching every other RPC's defensive style.
+- **Confirmed intentional, not fixed**: `customers`/`vehicles` writes have no permission gate at all — this is deliberate (front-desk/walk-in data; gating it would add friction to Register, the single most common daily action, for no real security benefit).
+- Everything else in the audit came back clean: every table has RLS enabled, every financial/ledger table is correctly select-only with writes forced through a permission-checked RPC, and the Phase 6e Storage bucket policies are correctly tenant-scoped.
+- Verified via `supabase db query --linked` under real RLS enforcement (`set role authenticated`, not the `postgres`-role bypass): `has_permission()` unchanged for existing legitimate employees; `adjust_inventory_stock()`/`create_purchase_order()`/`complete_job()`/`create_sale()` still work end-to-end after the `record_inventory_transaction` revoke (their internal calls are unaffected — a `SECURITY DEFINER` function retains implicit execute rights on functions it calls internally regardless of a `PUBLIC`/`authenticated` revoke), while a direct RPC call to it now correctly fails; legitimate same-tenant inserts still succeed on all 7 updated policies.
+
+Also added, same slice (no external accounts needed, unlike the rest of Phase 8):
+
+- **First error boundary anywhere in this app**: an uncaught render error previously white-screened the app with no recovery path — a real problem for a shop-floor tool where a cashier mid-transaction needs a visible way out. Added a top-level `ErrorBoundary` wrapping `<App />` in `main.tsx` with a friendly fallback + Reload button. Verified with a temporary deliberate `throw` + Playwright screenshot (system Chrome, no bundled browser binaries needed), then reverted.
+- **Route-level code splitting**: all 26+ page imports in `App.tsx` converted to `React.lazy()` inside a single `Suspense` boundary, eliminating the `>1MB` single-chunk build warning present since Phase 5 (largest chunk now 478KB, split per-route).
+- `npx tsc -b`, `npx oxlint`, `npm run build` all clean.
+- Not yet started (remaining Phase 8 pieces): actual deployment (needs the user's own hosting account) and error monitoring/observability (needs a third-party account).
+
 ## Phase 7c — Offline/PWA Hardening: Sync Engine Hardening (2026-09-23)
 
 Third and final Phase 7 slice — **Phase 7 (offline/PWA hardening) is now complete.**
