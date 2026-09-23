@@ -111,7 +111,7 @@ export function InspectionDialog({ jobId, plateNumber, open, onOpenChange }: Ins
             </div>
 
             {inspection && inspection.photos.length > 0 && (
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {inspection.photos.map((p) => (
                   <a key={p.id} href={p.url ?? undefined} target="_blank" rel="noreferrer">
                     {p.url ? (

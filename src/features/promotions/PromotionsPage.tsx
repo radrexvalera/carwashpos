@@ -153,7 +153,7 @@ export function PromotionsPage() {
                 <Label>Description (optional)</Label>
                 <Input value={form.description} onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))} />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="flex flex-col gap-1.5">
                   <Label>Discount type</Label>
                   <Select value={form.discountType} onValueChange={(v) => setForm((p) => ({ ...p, discountType: v as typeof p.discountType }))}>
@@ -176,7 +176,7 @@ export function PromotionsPage() {
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <div className="flex flex-col gap-1.5">
                   <Label>Min spend (optional)</Label>
                   <Input type="number" step="0.01" value={form.minSpend} onChange={(e) => setForm((p) => ({ ...p, minSpend: e.target.value }))} />

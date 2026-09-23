@@ -1,8 +1,5 @@
 import { supabase } from '@/lib/supabase/client'
 import type { Json } from '@/lib/supabase/types'
-import { getLoyaltyBalance } from '@/features/loyalty/api/loyaltyApi'
-import { getFleetAccountForCustomer } from '@/features/fleet/api/fleetApi'
-import { getRedeemableProgramsForServices } from '@/features/memberships/api/membershipsApi'
 
 // Payment collection is online-only for v1: by the time a job shows on the queue board it's
 // already synced (the board only ever reads server data), and create_sale() needs real
@@ -18,6 +15,13 @@ export async function getJobForPayment(jobId: string) {
     .eq('id', job.vehicle_id)
     .single()
   if (vehicleError) throw vehicleError
+
+  const { data: location, error: locationError } = await supabase
+    .from('locations')
+    .select('name')
+    .eq('id', job.location_id)
+    .single()
+  if (locationError) throw locationError
 
   const { data: jobServices, error: servicesError } = await supabase
     .from('job_services')
@@ -40,9 +44,6 @@ export async function getJobForPayment(jobId: string) {
   if (retailError) throw retailError
 
   let customer: { id: string; full_name: string } | null = null
-  let loyaltyBalance = 0
-  let fleetAccount: Awaited<ReturnType<typeof getFleetAccountForCustomer>> = null
-  let membershipPrograms: Awaited<ReturnType<typeof getRedeemableProgramsForServices>> = []
   if (vehicle.customer_id) {
     const { data: customerData, error: customerError } = await supabase
       .from('customers')
@@ -51,22 +52,15 @@ export async function getJobForPayment(jobId: string) {
       .single()
     if (customerError) throw customerError
     customer = customerData
-    ;[loyaltyBalance, fleetAccount, membershipPrograms] = await Promise.all([
-      getLoyaltyBalance(customerData.id),
-      getFleetAccountForCustomer(customerData.id),
-      getRedeemableProgramsForServices(customerData.id, serviceIds),
-    ])
   }
 
   return {
     job,
     vehicle,
+    locationName: location.name,
     jobServices: (jobServices ?? []).map((js) => ({ ...js, serviceName: serviceNameById.get(js.service_id) ?? 'Service' })),
     retailItems: retailItems ?? [],
     customer,
-    loyaltyBalance,
-    fleetAccount,
-    membershipPrograms,
   }
 }
 
@@ -75,24 +69,21 @@ interface CreateSaleInput {
   jobId: string | null
   lineItems: { jobServiceId: string; discountAmount: number }[]
   productLines: { itemId: string; quantity: number }[]
-  payments: { method: string; amount: number; referenceNote?: string }[]
-  promotionId?: string | null
-  loyaltyPointsRedeemed?: number
-  billingType?: 'immediate' | 'on_account'
-  membershipRedemption?: { programId: string; jobServiceId: string } | null
+  payments: { method: string; amount: number; referenceNote?: string; tenderedAmount?: number; changeGiven?: number }[]
 }
 
+// Promotions/loyalty/memberships/fleet billing are disabled for now (nav + Collect Payment UI both
+// removed) -- create_sale() still accepts these fields, so this just always sends the "off" values
+// rather than threading unused params through from the caller.
 export async function createSaleForJob(input: CreateSaleInput) {
   const payload = {
     client_generated_id: crypto.randomUUID(),
     shift_id: input.shiftId,
     job_id: input.jobId,
-    promotion_id: input.promotionId || null,
-    loyalty_points_redeemed: input.loyaltyPointsRedeemed || 0,
-    billing_type: input.billingType || 'immediate',
-    membership_redemption: input.membershipRedemption
-      ? { program_id: input.membershipRedemption.programId, job_service_id: input.membershipRedemption.jobServiceId }
-      : null,
+    promotion_id: null,
+    loyalty_points_redeemed: 0,
+    billing_type: 'immediate',
+    membership_redemption: null,
     line_items: [
       ...input.lineItems.map((l) => ({
         line_type: 'job_service',
@@ -105,7 +96,13 @@ export async function createSaleForJob(input: CreateSaleInput) {
         quantity: p.quantity,
       })),
     ],
-    payments: input.payments.map((p) => ({ method: p.method, amount: p.amount, reference_note: p.referenceNote })),
+    payments: input.payments.map((p) => ({
+      method: p.method,
+      amount: p.amount,
+      reference_note: p.referenceNote,
+      tendered_amount: p.tenderedAmount,
+      change_given: p.changeGiven,
+    })),
   }
 
   const { data, error } = await supabase.rpc('create_sale', { payload: payload as unknown as Json })

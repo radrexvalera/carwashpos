@@ -145,6 +145,7 @@ export interface Database {
           timezone: string
           receipt_header: string | null
           receipt_footer: string | null
+          receipt_paper_width: string
           numbering_prefix: string
           loyalty_earn_rate: number
           loyalty_redemption_value: number
@@ -160,6 +161,7 @@ export interface Database {
           timezone?: string
           receipt_header?: string | null
           receipt_footer?: string | null
+          receipt_paper_width?: string
           numbering_prefix?: string
           loyalty_earn_rate?: number
           loyalty_redemption_value?: number
@@ -679,7 +681,7 @@ export interface Database {
           vehicle_id: string
           vehicle_size_id: string
           bay_id: string | null
-          status: 'waiting' | 'washing' | 'detailing' | 'quality_check' | 'ready_for_release' | 'completed' | 'cancelled'
+          status: 'waiting' | 'ongoing' | 'ready_for_release' | 'completed' | 'cancelled'
           bay_entered_at: string | null
           completed_at: string | null
           cancelled_at: string | null
@@ -866,6 +868,8 @@ export interface Database {
           method: 'cash' | 'gcash' | 'maya' | 'bank_transfer' | 'card'
           amount: number
           reference_note: string | null
+          tendered_amount: number | null
+          change_given: number | null
           paid_at: string
           recorded_by: string
         }

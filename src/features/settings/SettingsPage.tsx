@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { getSettings, updateSettings } from './api/settingsApi'
 
@@ -19,6 +20,7 @@ const settingsSchema = z.object({
   numberingPrefix: z.string().min(1, 'Required').max(10),
   receiptHeader: z.string().optional(),
   receiptFooter: z.string().optional(),
+  receiptPaperWidth: z.enum(['58mm', '80mm']),
   loyaltyEarnRate: z.coerce.number().min(0, 'Must be 0 or more'),
   loyaltyRedemptionValue: z.coerce.number().min(0, 'Must be 0 or more'),
 })
@@ -40,6 +42,7 @@ export function SettingsPage() {
       numberingPrefix: 'CW',
       receiptHeader: '',
       receiptFooter: '',
+      receiptPaperWidth: '58mm',
       loyaltyEarnRate: 1,
       loyaltyRedemptionValue: 0.5,
     },
@@ -57,6 +60,7 @@ export function SettingsPage() {
           numberingPrefix: s.numbering_prefix,
           receiptHeader: s.receipt_header ?? '',
           receiptFooter: s.receipt_footer ?? '',
+          receiptPaperWidth: (s.receipt_paper_width as '58mm' | '80mm') ?? '58mm',
           loyaltyEarnRate: s.loyalty_earn_rate,
           loyaltyRedemptionValue: s.loyalty_redemption_value,
         }),
@@ -78,6 +82,7 @@ export function SettingsPage() {
         numbering_prefix: values.numberingPrefix,
         receipt_header: values.receiptHeader || null,
         receipt_footer: values.receiptFooter || null,
+        receipt_paper_width: values.receiptPaperWidth,
         loyalty_earn_rate: values.loyaltyEarnRate,
         loyalty_redemption_value: values.loyaltyRedemptionValue,
       })
@@ -197,6 +202,27 @@ export function SettingsPage() {
                     <FormControl>
                       <Textarea rows={2} placeholder="e.g. Thank you!" {...field} />
                     </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="receiptPaperWidth"
+                render={({ field }) => (
+                  <FormItem className="max-w-xs">
+                    <FormLabel>Receipt printer paper width</FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="58mm">58mm</SelectItem>
+                        <SelectItem value="80mm">80mm</SelectItem>
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}

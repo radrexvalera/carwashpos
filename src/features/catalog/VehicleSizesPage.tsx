@@ -7,7 +7,15 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { createVehicleSize, listVehicleSizes, setVehicleSizeActive, type VehicleSize } from './api/catalogApi'
+import { ReorderButtons } from '@/components/ReorderButtons'
+import { moveInSortOrder } from '@/lib/sortOrder'
+import {
+  createVehicleSize,
+  listVehicleSizes,
+  setVehicleSizeActive,
+  updateVehicleSizeSortOrder,
+  type VehicleSize,
+} from './api/catalogApi'
 
 export function VehicleSizesPage() {
   const { profile } = useTenant()
@@ -57,6 +65,15 @@ export function VehicleSizesPage() {
     }
   }
 
+  async function moveRow(index: number, direction: -1 | 1) {
+    try {
+      await moveInSortOrder(sizes, index, direction, updateVehicleSizeSortOrder)
+      await reload()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to reorder vehicle sizes')
+    }
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -99,14 +116,23 @@ export function VehicleSizesPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead />
                 <TableHead>Name</TableHead>
                 <TableHead>Sort order</TableHead>
                 <TableHead className="text-right">Active</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {sizes.map((row) => (
+              {sizes.map((row, i) => (
                 <TableRow key={row.id}>
+                  <TableCell>
+                    <ReorderButtons
+                      canMoveUp={i > 0}
+                      canMoveDown={i < sizes.length - 1}
+                      onMoveUp={() => moveRow(i, -1)}
+                      onMoveDown={() => moveRow(i, 1)}
+                    />
+                  </TableCell>
                   <TableCell>{row.name}</TableCell>
                   <TableCell>{row.sort_order}</TableCell>
                   <TableCell className="text-right">
@@ -116,7 +142,7 @@ export function VehicleSizesPage() {
               ))}
               {!loading && sizes.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={3} className="text-center text-muted-foreground">
+                  <TableCell colSpan={4} className="text-center text-muted-foreground">
                     No vehicle sizes yet.
                   </TableCell>
                 </TableRow>

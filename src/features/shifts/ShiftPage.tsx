@@ -194,7 +194,7 @@ export function ShiftPage() {
             <CardTitle>Cash in / out</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Select value={movementType} onValueChange={(v) => setMovementType(v as 'cash_in' | 'cash_out')}>
                 <SelectTrigger className="w-32">
                   <SelectValue />

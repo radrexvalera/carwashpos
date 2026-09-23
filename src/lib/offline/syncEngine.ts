@@ -27,6 +27,19 @@ export async function flushMutationQueue() {
   flushing = true
 
   try {
+    // A mutation is marked 'syncing' right before its RPC call and only cleared to 'synced' or
+    // 'failed'/'pending' afterward -- if the tab closes, reloads, or crashes in between (page
+    // unload aborts the in-flight fetch before the catch block can run), the entry is orphaned at
+    // 'syncing' forever: the query below only ever picks up 'pending', so it would never be
+    // retried again regardless of connectivity, showing "Syncing..." indefinitely with no way to
+    // recover. The `flushing` guard above already means nothing in THIS session can legitimately
+    // be mid-flight right now, so anything still 'syncing' at this point is a leftover from an
+    // interrupted previous run -- safe to requeue.
+    const orphaned = await db.mutationQueue.where('status').equals('syncing').toArray()
+    for (const mutation of orphaned) {
+      await db.mutationQueue.update(mutation.id, { status: 'pending', nextAttemptAt: undefined })
+    }
+
     const now = Date.now()
     const pending = (await db.mutationQueue.where('status').equals('pending').sortBy('sequence')).filter(
       (m) => !m.nextAttemptAt || new Date(m.nextAttemptAt).getTime() <= now,

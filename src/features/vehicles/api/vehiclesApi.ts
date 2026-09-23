@@ -39,6 +39,29 @@ export async function searchVehicles(query: string) {
   return (data ?? []).map((v) => ({ ...v, customerName: v.customer_id ? (nameByCustomer.get(v.customer_id) ?? null) : null }))
 }
 
+export async function getVehicle(vehicleId: string) {
+  const { data, error } = await supabase.from('vehicles').select('*').eq('id', vehicleId).single()
+  if (error) throw error
+  return data
+}
+
+export async function updateVehicle(
+  vehicleId: string,
+  input: { plateNumber: string; make: string | null; model: string | null; color: string | null; vehicleSizeId: string | null },
+) {
+  const { error } = await supabase
+    .from('vehicles')
+    .update({
+      plate_number: input.plateNumber,
+      make: input.make,
+      model: input.model,
+      color: input.color,
+      vehicle_size_id: input.vehicleSizeId,
+    })
+    .eq('id', vehicleId)
+  if (error) throw error
+}
+
 export async function createVehicle(input: {
   tenantId: string
   customerId: string | null

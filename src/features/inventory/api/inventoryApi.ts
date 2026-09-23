@@ -28,6 +28,11 @@ export async function setInventoryCategoryActive(id: string, isActive: boolean) 
   if (error) throw error
 }
 
+export async function updateInventoryCategorySortOrder(id: string, sortOrder: number) {
+  const { error } = await supabase.from('inventory_categories').update({ sort_order: sortOrder }).eq('id', id)
+  if (error) throw error
+}
+
 export async function listInventoryUnits() {
   const { data, error } = await supabase.from('inventory_units').select('*').order('name', { ascending: true })
   if (error) throw error

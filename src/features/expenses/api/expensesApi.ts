@@ -22,6 +22,11 @@ export async function setExpenseCategoryActive(id: string, isActive: boolean) {
   if (error) throw error
 }
 
+export async function updateExpenseCategorySortOrder(id: string, sortOrder: number) {
+  const { error } = await supabase.from('expense_categories').update({ sort_order: sortOrder }).eq('id', id)
+  if (error) throw error
+}
+
 export async function listExpenses(from: string, to: string) {
   const { data, error } = await supabase
     .from('expenses')

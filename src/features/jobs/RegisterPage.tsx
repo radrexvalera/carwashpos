@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import type { Database } from '@/lib/supabase/types'
 import type { LocalJobServiceLine } from '@/lib/offline/types'
 import { createCustomer, createVehicle } from '@/features/vehicles/api/vehiclesApi'
+import { EditVehicleDialog } from '@/features/vehicles/EditVehicleDialog'
 import { createJobOffline } from './api/jobMutations'
 
 type VehicleRow = Database['public']['Tables']['vehicles']['Row']
@@ -54,6 +55,7 @@ export function RegisterPage() {
   const [newCustomerName, setNewCustomerName] = useState('')
   const [newCustomerMobile, setNewCustomerMobile] = useState('')
   const [creatingVehicle, setCreatingVehicle] = useState(false)
+  const [editingVehicleId, setEditingVehicleId] = useState<string | null>(null)
 
   const [sizeId, setSizeId] = useState('')
   const [lines, setLines] = useState<LocalJobServiceLine[]>([])
@@ -92,6 +94,10 @@ export function RegisterPage() {
     setSelectedVehicle(v)
     setPlateQuery(v.plate_number)
     setShowNewVehicleForm(false)
+    // Reset to this vehicle's own saved size -- otherwise a size picked earlier for a different
+    // vehicle this session would win over this vehicle's actual saved size (sizeId, once set,
+    // takes priority in effectiveSizeId's fallback chain regardless of which vehicle it was for).
+    setSizeId(v.vehicle_size_id || '')
   }
 
   async function handleCreateVehicle() {
@@ -115,7 +121,7 @@ export function RegisterPage() {
         model: newModel.trim() || null,
         color: newColor.trim() || null,
         vehicleType: null,
-        vehicleSizeId: null,
+        vehicleSizeId: sizeId || null,
       })
       const vehicle: VehicleRow = {
         id: vehicleId,
@@ -127,7 +133,7 @@ export function RegisterPage() {
         year: null,
         color: newColor.trim() || null,
         vehicle_type: null,
-        vehicle_size_id: null,
+        vehicle_size_id: sizeId || null,
         notes: null,
         is_active: true,
         created_at: new Date().toISOString(),
@@ -226,6 +232,7 @@ export function RegisterPage() {
   }
 
   return (
+    <>
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_360px]">
       <div className="flex flex-col gap-6">
         <div>
@@ -281,22 +288,27 @@ export function RegisterPage() {
                     {selectedVehicle.make} {selectedVehicle.model}
                   </div>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setSelectedVehicle(null)
-                    setPlateQuery('')
-                  }}
-                >
-                  Change
-                </Button>
+                <div className="flex gap-1">
+                  <Button variant="ghost" size="sm" onClick={() => setEditingVehicleId(selectedVehicle.id)}>
+                    Edit
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setSelectedVehicle(null)
+                      setPlateQuery('')
+                    }}
+                  >
+                    Change
+                  </Button>
+                </div>
               </div>
             )}
 
             {showNewVehicleForm && !selectedVehicle && (
               <div className="flex flex-col gap-2 rounded-md border p-3">
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <div className="flex flex-col gap-1">
                     <Label>Plate</Label>
                     <Input value={newPlate || plateQuery} onChange={(e) => setNewPlate(e.target.value)} />
@@ -312,6 +324,21 @@ export function RegisterPage() {
                   <div className="flex flex-col gap-1">
                     <Label>Model</Label>
                     <Input value={newModel} onChange={(e) => setNewModel(e.target.value)} placeholder="Fortuner" />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <Label>Vehicle size</Label>
+                    <Select value={sizeId} onValueChange={setSizeId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select size" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(sizes ?? []).map((s) => (
+                          <SelectItem key={s.id} value={s.id}>
+                            {s.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="flex flex-col gap-1">
                     <Label>Customer name (optional)</Label>
@@ -444,5 +471,27 @@ export function RegisterPage() {
         </CardContent>
       </Card>
     </div>
+
+    <EditVehicleDialog
+      vehicleId={editingVehicleId}
+      sizes={sizes ?? []}
+      onOpenChange={(open) => !open && setEditingVehicleId(null)}
+      onSaved={(updated) => {
+        if (!selectedVehicle) return
+        const patched: VehicleRow = {
+          ...selectedVehicle,
+          plate_number: updated.plateNumber,
+          make: updated.make,
+          model: updated.model,
+          color: updated.color,
+          vehicle_size_id: updated.vehicleSizeId,
+        }
+        setSelectedVehicle(patched)
+        setPlateQuery(updated.plateNumber)
+        setSizeId(updated.vehicleSizeId || '')
+        db.vehicles.put(patched)
+      }}
+    />
+    </>
   )
 }

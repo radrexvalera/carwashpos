@@ -28,6 +28,11 @@ export async function setVehicleSizeActive(id: string, isActive: boolean) {
   if (error) throw error
 }
 
+export async function updateVehicleSizeSortOrder(id: string, sortOrder: number) {
+  const { error } = await supabase.from('vehicle_sizes').update({ sort_order: sortOrder }).eq('id', id)
+  if (error) throw error
+}
+
 export async function listServiceCategories() {
   const { data, error } = await supabase.from('service_categories').select('*').order('sort_order', { ascending: true })
   if (error) throw error
@@ -45,6 +50,11 @@ export async function createServiceCategory(input: { tenantId: string; name: str
 
 export async function setServiceCategoryActive(id: string, isActive: boolean) {
   const { error } = await supabase.from('service_categories').update({ is_active: isActive }).eq('id', id)
+  if (error) throw error
+}
+
+export async function updateServiceCategorySortOrder(id: string, sortOrder: number) {
+  const { error } = await supabase.from('service_categories').update({ sort_order: sortOrder }).eq('id', id)
   if (error) throw error
 }
 
@@ -127,6 +137,11 @@ export async function createBay(input: {
 
 export async function setBayActive(id: string, isActive: boolean) {
   const { error } = await supabase.from('wash_bays').update({ is_active: isActive }).eq('id', id)
+  if (error) throw error
+}
+
+export async function updateBaySortOrder(id: string, sortOrder: number) {
+  const { error } = await supabase.from('wash_bays').update({ sort_order: sortOrder }).eq('id', id)
   if (error) throw error
 }
 

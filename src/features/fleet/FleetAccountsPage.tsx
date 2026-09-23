@@ -245,7 +245,7 @@ export function FleetAccountsPage() {
 
               <Separator />
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="flex flex-col gap-1.5">
                   <Label>Credit limit (optional)</Label>
                   <Input type="number" step="0.01" placeholder="Unlimited" value={creditLimit} onChange={(e) => setCreditLimit(e.target.value)} />

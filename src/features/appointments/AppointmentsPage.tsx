@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { listServices, listVehicleSizes, listLocations } from '@/features/catalog/api/catalogApi'
 import { listEmployees } from '@/features/employees/api/employeesApi'
 import { createCustomer, createVehicle, searchVehicles } from '@/features/vehicles/api/vehiclesApi'
+import { EditVehicleDialog } from '@/features/vehicles/EditVehicleDialog'
 import {
   cancelAppointment,
   checkInAppointment,
@@ -55,6 +56,7 @@ export function AppointmentsPage() {
   const [plateQuery, setPlateQuery] = useState('')
   const [matches, setMatches] = useState<VehicleMatch[]>([])
   const [selectedVehicle, setSelectedVehicle] = useState<VehicleMatch | null>(null)
+  const [editingVehicleId, setEditingVehicleId] = useState<string | null>(null)
   const [showNewVehicleForm, setShowNewVehicleForm] = useState(false)
   const [newMake, setNewMake] = useState('')
   const [newModel, setNewModel] = useState('')
@@ -248,8 +250,9 @@ export function AppointmentsPage() {
   }
 
   return (
+    <>
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Appointments</h1>
           <p className="text-muted-foreground">Bookings made ahead of time — check one in when the vehicle arrives.</p>
@@ -294,14 +297,19 @@ export function AppointmentsPage() {
                 {selectedVehicle && (
                   <div className="flex items-center justify-between rounded-md border bg-accent/40 p-2">
                     <span className="text-sm font-medium">{selectedVehicle.plate_number}</span>
-                    <Button variant="ghost" size="sm" onClick={() => runVehicleSearch('')}>
-                      Change
-                    </Button>
+                    <div className="flex gap-1">
+                      <Button variant="ghost" size="sm" onClick={() => setEditingVehicleId(selectedVehicle.id)}>
+                        Edit
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => runVehicleSearch('')}>
+                        Change
+                      </Button>
+                    </div>
                   </div>
                 )}
                 {showNewVehicleForm && !selectedVehicle && (
                   <div className="flex flex-col gap-2 rounded-md border p-3">
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                       <Input placeholder="Make" value={newMake} onChange={(e) => setNewMake(e.target.value)} />
                       <Input placeholder="Model" value={newModel} onChange={(e) => setNewModel(e.target.value)} />
                       <Input placeholder="Customer name (optional)" value={newCustomerName} onChange={(e) => setNewCustomerName(e.target.value)} />
@@ -378,7 +386,7 @@ export function AppointmentsPage() {
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           {appointments.map((appt) => (
-            <div key={appt.id} className="flex items-center justify-between gap-3 rounded-md border p-3">
+            <div key={appt.id} className="flex flex-col gap-3 rounded-md border p-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex flex-col gap-1">
                 <div className="flex items-center gap-2">
                   <span className="font-medium">
@@ -398,7 +406,7 @@ export function AppointmentsPage() {
                 {appt.notes && <p className="text-xs text-muted-foreground">{appt.notes}</p>}
               </div>
               {appt.status === 'scheduled' && (
-                <div className="flex shrink-0 gap-2">
+                <div className="flex flex-wrap shrink-0 gap-2">
                   <Dialog open={checkInTarget?.id === appt.id} onOpenChange={(o) => !o && setCheckInTarget(null)}>
                     <DialogTrigger asChild>
                       <Button size="sm" onClick={() => openCheckIn(appt)}>
@@ -447,5 +455,18 @@ export function AppointmentsPage() {
         </CardContent>
       </Card>
     </div>
+
+    <EditVehicleDialog
+      vehicleId={editingVehicleId}
+      sizes={vehicleSizes}
+      onOpenChange={(open) => !open && setEditingVehicleId(null)}
+      onSaved={(updated) => {
+        if (!selectedVehicle) return
+        setSelectedVehicle({ ...selectedVehicle, plate_number: updated.plateNumber, vehicle_size_id: updated.vehicleSizeId })
+        setPlateQuery(updated.plateNumber)
+        setVehicleSizeId(updated.vehicleSizeId || '')
+      }}
+    />
+    </>
   )
 }

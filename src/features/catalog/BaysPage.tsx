@@ -7,7 +7,9 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { createBay, listBays, listLocations, setBayActive, type Bay, type Location } from './api/catalogApi'
+import { ReorderButtons } from '@/components/ReorderButtons'
+import { moveInSortOrder } from '@/lib/sortOrder'
+import { createBay, listBays, listLocations, setBayActive, updateBaySortOrder, type Bay, type Location } from './api/catalogApi'
 
 export function BaysPage() {
   const { profile } = useTenant()
@@ -65,6 +67,15 @@ export function BaysPage() {
     }
   }
 
+  async function moveRow(index: number, direction: -1 | 1) {
+    try {
+      await moveInSortOrder(bays, index, direction, updateBaySortOrder)
+      await reload()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to reorder bays')
+    }
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -104,14 +115,23 @@ export function BaysPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead />
                 <TableHead>Name</TableHead>
                 <TableHead>Sort order</TableHead>
                 <TableHead className="text-right">Active</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {bays.map((row) => (
+              {bays.map((row, i) => (
                 <TableRow key={row.id}>
+                  <TableCell>
+                    <ReorderButtons
+                      canMoveUp={i > 0}
+                      canMoveDown={i < bays.length - 1}
+                      onMoveUp={() => moveRow(i, -1)}
+                      onMoveDown={() => moveRow(i, 1)}
+                    />
+                  </TableCell>
                   <TableCell>{row.name}</TableCell>
                   <TableCell>{row.sort_order}</TableCell>
                   <TableCell className="text-right">
@@ -121,7 +141,7 @@ export function BaysPage() {
               ))}
               {!loading && bays.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={3} className="text-center text-muted-foreground">
+                  <TableCell colSpan={4} className="text-center text-muted-foreground">
                     No bays yet.
                   </TableCell>
                 </TableRow>

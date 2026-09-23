@@ -30,9 +30,6 @@ const CommissionRulesPage = lazy(() =>
 const CommissionReportPage = lazy(() =>
   import('@/features/commission/CommissionReportPage').then((m) => ({ default: m.CommissionReportPage })),
 )
-const AttendantDashboardPage = lazy(() =>
-  import('@/features/commission/AttendantDashboardPage').then((m) => ({ default: m.AttendantDashboardPage })),
-)
 const PayrollPage = lazy(() => import('@/features/payroll/PayrollPage').then((m) => ({ default: m.PayrollPage })))
 const InventoryCategoriesPage = lazy(() =>
   import('@/features/inventory/InventoryCategoriesPage').then((m) => ({ default: m.InventoryCategoriesPage })),
@@ -55,13 +52,8 @@ const ExpenseCategoriesPage = lazy(() =>
   import('@/features/expenses/ExpenseCategoriesPage').then((m) => ({ default: m.ExpenseCategoriesPage })),
 )
 const SalesReportPage = lazy(() => import('@/features/reports/SalesReportPage').then((m) => ({ default: m.SalesReportPage })))
-const PromotionsPage = lazy(() => import('@/features/promotions/PromotionsPage').then((m) => ({ default: m.PromotionsPage })))
-const LoyaltyPage = lazy(() => import('@/features/loyalty/LoyaltyPage').then((m) => ({ default: m.LoyaltyPage })))
-const FleetAccountsPage = lazy(() => import('@/features/fleet/FleetAccountsPage').then((m) => ({ default: m.FleetAccountsPage })))
-const MembershipProgramsPage = lazy(() =>
-  import('@/features/memberships/MembershipProgramsPage').then((m) => ({ default: m.MembershipProgramsPage })),
-)
 const AppointmentsPage = lazy(() => import('@/features/appointments/AppointmentsPage').then((m) => ({ default: m.AppointmentsPage })))
+const TransactionsPage = lazy(() => import('@/features/sales/TransactionsPage').then((m) => ({ default: m.TransactionsPage })))
 
 function RouteLoading() {
   return <p className="p-6 text-muted-foreground">Loading…</p>
@@ -85,10 +77,10 @@ export default function App() {
                 <Route path="/" element={<DashboardPage />} />
                 <Route path="/register" element={<RegisterPage />} />
                 <Route path="/appointments" element={<AppointmentsPage />} />
+                <Route path="/transactions" element={<TransactionsPage />} />
                 <Route path="/jobs" element={<JobQueuePage />} />
                 <Route path="/jobs/:jobId/pay" element={<JobPaymentPage />} />
                 <Route path="/shift" element={<ShiftPage />} />
-                <Route path="/my-commission" element={<AttendantDashboardPage />} />
                 <Route
                   path="/admin/commission-rules"
                   element={
@@ -238,38 +230,6 @@ export default function App() {
                   element={
                     <RoleGuard allowedRoles={['admin', 'manager']}>
                       <SalesReportPage />
-                    </RoleGuard>
-                  }
-                />
-                <Route
-                  path="/admin/promotions"
-                  element={
-                    <RoleGuard allowedRoles={['admin', 'manager']}>
-                      <PromotionsPage />
-                    </RoleGuard>
-                  }
-                />
-                <Route
-                  path="/loyalty"
-                  element={
-                    <RoleGuard allowedRoles={['admin', 'manager']}>
-                      <LoyaltyPage />
-                    </RoleGuard>
-                  }
-                />
-                <Route
-                  path="/admin/fleet-accounts"
-                  element={
-                    <RoleGuard allowedRoles={['admin', 'manager']}>
-                      <FleetAccountsPage />
-                    </RoleGuard>
-                  }
-                />
-                <Route
-                  path="/admin/membership-programs"
-                  element={
-                    <RoleGuard allowedRoles={['admin', 'manager']}>
-                      <MembershipProgramsPage />
                     </RoleGuard>
                   }
                 />

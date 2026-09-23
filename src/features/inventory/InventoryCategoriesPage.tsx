@@ -7,7 +7,15 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { createInventoryCategory, listInventoryCategories, setInventoryCategoryActive, type InventoryCategory } from './api/inventoryApi'
+import { ReorderButtons } from '@/components/ReorderButtons'
+import { moveInSortOrder } from '@/lib/sortOrder'
+import {
+  createInventoryCategory,
+  listInventoryCategories,
+  setInventoryCategoryActive,
+  updateInventoryCategorySortOrder,
+  type InventoryCategory,
+} from './api/inventoryApi'
 
 export function InventoryCategoriesPage() {
   const { profile } = useTenant()
@@ -57,6 +65,15 @@ export function InventoryCategoriesPage() {
     }
   }
 
+  async function moveRow(index: number, direction: -1 | 1) {
+    try {
+      await moveInSortOrder(categories, index, direction, updateInventoryCategorySortOrder)
+      await reload()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to reorder categories')
+    }
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -90,14 +107,23 @@ export function InventoryCategoriesPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead />
                 <TableHead>Name</TableHead>
                 <TableHead>Sort order</TableHead>
                 <TableHead className="text-right">Active</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {categories.map((row) => (
+              {categories.map((row, i) => (
                 <TableRow key={row.id}>
+                  <TableCell>
+                    <ReorderButtons
+                      canMoveUp={i > 0}
+                      canMoveDown={i < categories.length - 1}
+                      onMoveUp={() => moveRow(i, -1)}
+                      onMoveDown={() => moveRow(i, 1)}
+                    />
+                  </TableCell>
                   <TableCell>{row.name}</TableCell>
                   <TableCell>{row.sort_order}</TableCell>
                   <TableCell className="text-right">
@@ -107,7 +133,7 @@ export function InventoryCategoriesPage() {
               ))}
               {!loading && categories.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={3} className="text-center text-muted-foreground">
+                  <TableCell colSpan={4} className="text-center text-muted-foreground">
                     No categories yet.
                   </TableCell>
                 </TableRow>

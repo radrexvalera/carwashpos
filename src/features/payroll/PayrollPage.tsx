@@ -9,6 +9,8 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { formatMoney } from '@/lib/money'
+import { getSettings, type Settings } from '@/features/settings/api/settingsApi'
+import { Payslip } from './Payslip'
 import {
   addPayrollAdjustment,
   generatePayrollPeriod,
@@ -42,6 +44,8 @@ export function PayrollPage() {
   const [generating, setGenerating] = useState(false)
 
   const [adjustmentDrafts, setAdjustmentDrafts] = useState<Record<string, { amount: string; reason: string }>>({})
+  const [settings, setSettings] = useState<Settings | null>(null)
+  const [printingEntryId, setPrintingEntryId] = useState<string | null>(null)
 
   async function reloadPeriods() {
     setPeriods(await listPayrollPeriods())
@@ -69,6 +73,18 @@ export function PayrollPage() {
   useEffect(() => {
     reloadPeriods().finally(() => setLoading(false))
   }, [])
+
+  useEffect(() => {
+    if (!profile) return
+    getSettings(profile.tenantId)
+      .then(setSettings)
+      .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to load settings'))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.tenantId])
+
+  useEffect(() => {
+    if (printingEntryId) window.print()
+  }, [printingEntryId])
 
   async function handleGenerate() {
     if (!profile) return
@@ -154,8 +170,9 @@ export function PayrollPage() {
   }
 
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[300px_1fr]">
-      <div className="flex flex-col gap-4">
+    <>
+      <div className="grid grid-cols-1 gap-6 print:hidden lg:grid-cols-[300px_1fr]">
+        <div className="flex flex-col gap-4">
         <Card>
           <CardHeader>
             <CardTitle>Generate period</CardTitle>
@@ -227,8 +244,11 @@ export function PayrollPage() {
 
             {entries.map((entry) => (
               <Card key={entry.id}>
-                <CardHeader>
+                <CardHeader className="flex flex-row items-center justify-between">
                   <CardTitle className="text-base">{entry.employeeName}</CardTitle>
+                  <Button size="sm" variant="outline" onClick={() => setPrintingEntryId(entry.id)}>
+                    Print payslip
+                  </Button>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-3">
                   <Table>
@@ -345,6 +365,30 @@ export function PayrollPage() {
           </>
         )}
       </div>
-    </div>
+      </div>
+
+      {settings &&
+        selected &&
+        entries.map((entry) => (
+          <div key={entry.id} className={printingEntryId === entry.id ? 'hidden print:block' : 'hidden'}>
+            <Payslip
+              businessName={settings.business_name}
+              address={settings.address}
+              paperWidth={(settings.receipt_paper_width as '58mm' | '80mm') || '58mm'}
+              employeeName={entry.employeeName}
+              periodLabel={`${selected.start_date} to ${selected.end_date}`}
+              isDraft={selected.status === 'draft'}
+              basePay={entry.base_pay}
+              commissionTotal={entry.commission_total}
+              tips={entry.tips}
+              bonus={entry.bonus}
+              cashAdvance={entry.cash_advance}
+              deductions={entry.deductions}
+              adjustments={(adjustmentsByEntry[entry.id] ?? []).map((a) => ({ reason: a.reason, amount: a.amount }))}
+              netPay={entry.net_pay}
+            />
+          </div>
+        ))}
+    </>
   )
 }

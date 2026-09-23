@@ -5,7 +5,7 @@ interface UpdateJobStatusInput {
   tenantId: string
   boardJobId: string
   clientGeneratedId: string
-  status: 'waiting' | 'washing' | 'detailing' | 'quality_check' | 'ready_for_release' | 'completed'
+  status: 'waiting' | 'ongoing' | 'ready_for_release' | 'completed'
   bayId: string | null
   bayEnteredAt: string | null
   completedAt: string | null

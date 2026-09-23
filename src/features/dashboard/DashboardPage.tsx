@@ -8,9 +8,7 @@ import { getDashboardSummary } from '@/features/reports/api/reportsApi'
 
 const JOB_STATUS_LABELS: Record<string, string> = {
   waiting: 'Waiting',
-  washing: 'Washing',
-  detailing: 'Detailing',
-  quality_check: 'Quality Check',
+  ongoing: 'On Going',
   ready_for_release: 'Ready for Release',
 }
 
