@@ -53,7 +53,7 @@ export function SalesReportPage() {
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-2xl font-semibold">Sales Report</h1>
-        <p className="text-muted-foreground">Revenue, payment mix, and top services for the selected period.</p>
+        <p className="text-muted-foreground">Revenue, payment mix, and services for the selected period.</p>
       </div>
 
       <Card>
@@ -145,11 +145,11 @@ export function SalesReportPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Top services</CardTitle>
+                <CardTitle className="text-base">Services</CardTitle>
               </CardHeader>
-              <CardContent className="flex flex-col gap-2">
-                {sales.topServices.length === 0 && <p className="text-sm text-muted-foreground">No services sold in this period.</p>}
-                {sales.topServices.map((s) => (
+              <CardContent className="flex max-h-80 flex-col gap-2 overflow-y-auto">
+                {sales.services.length === 0 && <p className="text-sm text-muted-foreground">No services sold in this period.</p>}
+                {sales.services.map((s) => (
                   <div key={s.name} className="flex justify-between text-sm">
                     <span>
                       {s.name} · {s.count}×

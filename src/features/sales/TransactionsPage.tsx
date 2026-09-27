@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { formatMoney } from '@/lib/money'
 import { getSettings, type Settings } from '@/features/settings/api/settingsApi'
 import { Receipt } from '@/features/jobs/Receipt'
-import { getSaleDetail, listSales, type SaleDetail, type SaleListRow } from './api/salesApi'
+import { getSaleDetail, listSales, listSalesByPlate, type SaleDetail, type SaleListRow } from './api/salesApi'
 
 function daysAgo(n: number) {
   const d = new Date()
@@ -27,6 +27,8 @@ export function TransactionsPage() {
   const { profile } = useTenant()
   const [from, setFrom] = useState(daysAgo(7))
   const [to, setTo] = useState(today())
+  const [plateQuery, setPlateQuery] = useState('')
+  const [activePlateQuery, setActivePlateQuery] = useState('')
   const [sales, setSales] = useState<SaleListRow[]>([])
   const [loading, setLoading] = useState(true)
   const [settings, setSettings] = useState<Settings | null>(null)
@@ -37,14 +39,33 @@ export function TransactionsPage() {
   async function load() {
     setLoading(true)
     try {
-      const fromIso = new Date(`${from}T00:00:00`).toISOString()
-      const toIso = new Date(`${to}T23:59:59`).toISOString()
-      setSales(await listSales(fromIso, toIso))
+      const plate = plateQuery.trim()
+      if (plate) {
+        setActivePlateQuery(plate)
+        setSales(await listSalesByPlate(plate))
+      } else {
+        setActivePlateQuery('')
+        const fromIso = new Date(`${from}T00:00:00`).toISOString()
+        const toIso = new Date(`${to}T23:59:59`).toISOString()
+        setSales(await listSales(fromIso, toIso))
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to load transactions')
     } finally {
       setLoading(false)
     }
+  }
+
+  function clearPlateSearch() {
+    setPlateQuery('')
+    setActivePlateQuery('')
+    setLoading(true)
+    const fromIso = new Date(`${from}T00:00:00`).toISOString()
+    const toIso = new Date(`${to}T23:59:59`).toISOString()
+    listSales(fromIso, toIso)
+      .then(setSales)
+      .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to load transactions'))
+      .finally(() => setLoading(false))
   }
 
   useEffect(() => {
@@ -82,24 +103,46 @@ export function TransactionsPage() {
         <CardContent className="flex flex-wrap items-end gap-3 pt-6">
           <div className="flex flex-col gap-1.5">
             <Label>From</Label>
-            <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+            <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} disabled={!!activePlateQuery} />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label>To</Label>
-            <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+            <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} disabled={!!activePlateQuery} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label>Plate number</Label>
+            <Input
+              placeholder="e.g. ABC-1234"
+              value={plateQuery}
+              onChange={(e) => setPlateQuery(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && load()}
+              className="w-40"
+            />
           </div>
           <Button variant="outline" onClick={load} disabled={loading}>
-            Refresh
+            {plateQuery.trim() ? 'Search' : 'Refresh'}
           </Button>
+          {activePlateQuery && (
+            <Button variant="ghost" onClick={clearPlateSearch} disabled={loading}>
+              Clear
+            </Button>
+          )}
         </CardContent>
       </Card>
 
       <Card>
         <CardContent className="pt-6">
+          {activePlateQuery && (
+            <p className="mb-3 text-sm text-muted-foreground">
+              Showing full transaction history for plate matching “{activePlateQuery}”, across all dates.
+            </p>
+          )}
           {loading ? (
             <p className="text-muted-foreground">Loading…</p>
           ) : sales.length === 0 ? (
-            <p className="text-muted-foreground">No transactions in this period.</p>
+            <p className="text-muted-foreground">
+              {activePlateQuery ? 'No transactions found for this plate number.' : 'No transactions in this period.'}
+            </p>
           ) : (
             <Table>
               <TableHeader>

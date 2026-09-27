@@ -11,8 +11,8 @@ interface PayslipProps {
   commissionTotal: number
   tips: number
   bonus: number
-  cashAdvance: number
-  deductions: number
+  cashAdvanceItems: { label: string; amount: number }[]
+  deductionItems: { reason: string; amount: number }[]
   adjustments: { reason: string; amount: number }[]
   netPay: number
 }
@@ -41,13 +41,15 @@ export function Payslip({
   commissionTotal,
   tips,
   bonus,
-  cashAdvance,
-  deductions,
+  cashAdvanceItems,
+  deductionItems,
   adjustments,
   netPay,
 }: PayslipProps) {
   const gross = basePay + commissionTotal + tips + bonus
   const adjustmentsTotal = adjustments.reduce((sum, a) => sum + a.amount, 0)
+  const cashAdvanceTotal = cashAdvanceItems.reduce((sum, i) => sum + i.amount, 0)
+  const deductionsTotal = deductionItems.reduce((sum, i) => sum + i.amount, 0)
   // Same printable-width convention as Receipt.tsx -- the print head can't reach the roll's
   // outer edges, so 48mm/72mm are the safe printable widths for 58mm/80mm paper.
   const contentWidth = paperWidth === '80mm' ? '72mm' : '48mm'
@@ -83,8 +85,14 @@ export function Payslip({
 
       <div className="flex flex-col gap-0.5">
         <div className="font-bold">Deductions</div>
-        <Row label="Cash advance" value={`-${formatMoney(cashAdvance)}`} />
-        <Row label="Deductions" value={`-${formatMoney(deductions)}`} />
+        {cashAdvanceItems.map((item, i) => (
+          <Row key={`ca-${i}`} label={item.label} value={`-${formatMoney(item.amount)}`} />
+        ))}
+        {deductionItems.map((item, i) => (
+          <Row key={`d-${i}`} label={item.reason} value={`-${formatMoney(item.amount)}`} />
+        ))}
+        {cashAdvanceItems.length === 0 && deductionItems.length === 0 && <Row label="None" value={formatMoney(0)} />}
+        <Row label="Total deductions" value={`-${formatMoney(cashAdvanceTotal + deductionsTotal)}`} bold />
       </div>
 
       {adjustments.length > 0 && (

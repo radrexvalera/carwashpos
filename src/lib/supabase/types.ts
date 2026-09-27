@@ -16,6 +16,7 @@ export interface Database {
           name: string
           slug: string
           settings: Record<string, unknown>
+          trial_ends_at: string | null
           created_at: string
         }
         Insert: {
@@ -23,6 +24,7 @@ export interface Database {
           name: string
           slug: string
           settings?: Record<string, unknown>
+          trial_ends_at?: string | null
           created_at?: string
         }
         Update: Partial<Database['public']['Tables']['tenants']['Insert']>
@@ -115,6 +117,8 @@ export interface Database {
           employment_status: 'active' | 'inactive' | 'terminated'
           active: boolean
           notes: string | null
+          salary_rate: number | null
+          salary_rate_type: 'daily' | 'weekly' | 'semi_monthly' | 'monthly' | null
           created_at: string
         }
         Insert: {
@@ -129,6 +133,8 @@ export interface Database {
           employment_status?: 'active' | 'inactive' | 'terminated'
           active?: boolean
           notes?: string | null
+          salary_rate?: number | null
+          salary_rate_type?: 'daily' | 'weekly' | 'semi_monthly' | 'monthly' | null
           created_at?: string
         }
         Update: Partial<Database['public']['Tables']['employees']['Insert']>
@@ -957,6 +963,12 @@ export interface Database {
           cash_advance: number
           deductions: number
           adjustments: number
+          withholding_tax: number
+          sss_contribution: number
+          philhealth_contribution: number
+          pagibig_contribution: number
+          sss_loan: number
+          hdmf_loan: number
           net_pay: number
           created_at: string
         }
@@ -968,6 +980,12 @@ export interface Database {
           cash_advance?: number
           deductions?: number
           adjustments?: number
+          withholding_tax?: number
+          sss_contribution?: number
+          philhealth_contribution?: number
+          pagibig_contribution?: number
+          sss_loan?: number
+          hdmf_loan?: number
         }
         Relationships: []
       }
@@ -990,6 +1008,51 @@ export interface Database {
           created_by: string
           created_at?: string
         }
+        Update: never
+        Relationships: []
+      }
+      cash_advances: {
+        Row: {
+          id: string
+          tenant_id: string
+          employee_id: string
+          amount: number
+          advance_date: string
+          reason: string | null
+          remaining_balance: number
+          status: 'outstanding' | 'paid'
+          created_by: string
+          created_at: string
+        }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
+      cash_advance_repayments: {
+        Row: {
+          id: string
+          tenant_id: string
+          cash_advance_id: string
+          payroll_entry_id: string
+          amount: number
+          created_by: string
+          created_at: string
+        }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
+      payroll_deductions: {
+        Row: {
+          id: string
+          tenant_id: string
+          payroll_entry_id: string
+          amount: number
+          reason: string
+          created_by: string
+          created_at: string
+        }
+        Insert: never
         Update: never
         Relationships: []
       }
@@ -1353,6 +1416,30 @@ export interface Database {
       }
       mark_payroll_period_paid: {
         Args: { p_period_id: string }
+        Returns: Json
+      }
+      create_cash_advance: {
+        Args: { p_employee_id: string; p_amount: number; p_advance_date: string; p_reason: string | null }
+        Returns: Json
+      }
+      record_cash_advance_repayment: {
+        Args: { p_cash_advance_id: string; p_payroll_entry_id: string; p_amount: number }
+        Returns: Json
+      }
+      void_cash_advance_repayment: {
+        Args: { p_repayment_id: string }
+        Returns: Json
+      }
+      add_payroll_deduction: {
+        Args: { p_payroll_entry_id: string; p_amount: number; p_reason: string }
+        Returns: Json
+      }
+      remove_payroll_deduction: {
+        Args: { p_deduction_id: string }
+        Returns: Json
+      }
+      delete_employee: {
+        Args: { p_employee_id: string }
         Returns: Json
       }
       adjust_inventory_stock: {

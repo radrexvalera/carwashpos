@@ -44,7 +44,7 @@ import { useOfflineBootstrap } from '@/lib/offline/useOfflineBootstrap'
 import { useOnlineStatus } from '@/lib/offline/useOnlineStatus'
 import { SyncStatusBadge } from '@/lib/offline/SyncStatusBadge'
 import { useTheme } from '@/lib/theme/useTheme'
-import { getSettings } from '@/features/settings/api/settingsApi'
+import { getSettings, getTenantTrialStatus } from '@/features/settings/api/settingsApi'
 import { listLocations } from '@/features/catalog/api/catalogApi'
 import { useAuth } from './AuthProvider'
 import { useTenant } from './TenantProvider'
@@ -242,13 +242,15 @@ export function AppShell() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [businessName, setBusinessName] = useState('')
   const [locationName, setLocationName] = useState('')
+  const [trialExpired, setTrialExpired] = useState(false)
 
   useEffect(() => {
     if (!profile) return
-    Promise.all([getSettings(profile.tenantId), listLocations()])
-      .then(([settings, locations]) => {
+    Promise.all([getSettings(profile.tenantId), listLocations(), getTenantTrialStatus(profile.tenantId)])
+      .then(([settings, locations, trial]) => {
         setBusinessName(settings.business_name)
         setLocationName(locations[0]?.name ?? '')
+        setTrialExpired(trial.expired)
       })
       .catch(() => {
         // Best-effort -- the breadcrumb is a nice-to-have, not worth surfacing an error toast for.
@@ -292,6 +294,12 @@ export function AppShell() {
           <AvatarMenu onSignOut={() => signOut()} />
         </div>
       </header>
+
+      {trialExpired && (
+        <div className="flex items-center justify-center gap-2 border-b bg-destructive/10 px-3 py-2 text-center text-sm text-destructive print:hidden">
+          <span>Your free trial has ended — your account is now read-only. Contact us to keep using {businessName || 'the app'}.</span>
+        </div>
+      )}
 
       <div className="flex flex-1 overflow-hidden print:overflow-visible lg:flex-row">
         <aside className="hidden w-56 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground print:hidden lg:flex">

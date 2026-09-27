@@ -14,4 +14,14 @@ export async function updateSettings(tenantId: string, input: Partial<Database['
   if (error) throw error
 }
 
+// null trial_ends_at means "not on a trial" (every tenant created before self-serve signup
+// existed, or one an operator has manually converted) -- never gated by the banner or the
+// server-side RPC checks.
+export async function getTenantTrialStatus(tenantId: string) {
+  const { data, error } = await supabase.from('tenants').select('trial_ends_at').eq('id', tenantId).single()
+  if (error) throw error
+  const expired = data.trial_ends_at !== null && new Date(data.trial_ends_at) < new Date()
+  return { trialEndsAt: data.trial_ends_at, expired }
+}
+
 export type { Settings }

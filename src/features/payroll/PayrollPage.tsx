@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { pdf } from '@react-pdf/renderer'
 import { toast } from 'sonner'
 import { useTenant } from '@/app/TenantProvider'
 import { Badge } from '@/components/ui/badge'
@@ -10,21 +11,36 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { formatMoney } from '@/lib/money'
 import { getSettings, type Settings } from '@/features/settings/api/settingsApi'
+import { listEmployees } from '@/features/employees/api/employeesApi'
 import { Payslip } from './Payslip'
+import { PayslipPdfDocument } from './PayslipPdfDocument'
 import {
   addPayrollAdjustment,
+  addPayrollDeduction,
+  createCashAdvance,
   generatePayrollPeriod,
+  getCashAdvancesByIds,
+  listCashAdvanceRepayments,
+  listOutstandingCashAdvances,
   listPayrollAdjustments,
+  listPayrollDeductions,
   listPayrollEntries,
   listPayrollPeriods,
   lockPayrollPeriod,
   markPayrollPeriodPaid,
+  recordCashAdvanceRepayment,
+  removePayrollDeduction,
   updatePayrollEntry,
+  voidCashAdvanceRepayment,
+  type CashAdvance,
+  type CashAdvanceRepayment,
   type PayrollAdjustment,
+  type PayrollDeduction,
   type PayrollPeriod,
 } from './api/payrollApi'
 
 type Entry = Awaited<ReturnType<typeof listPayrollEntries>>[number]
+type OutstandingAdvance = Awaited<ReturnType<typeof listOutstandingCashAdvances>>[number]
 
 function today() {
   return new Date().toISOString().slice(0, 10)
@@ -47,8 +63,24 @@ export function PayrollPage() {
   const [settings, setSettings] = useState<Settings | null>(null)
   const [printingEntryId, setPrintingEntryId] = useState<string | null>(null)
 
+  const [employees, setEmployees] = useState<{ id: string; full_name: string }[]>([])
+  const [outstandingAdvances, setOutstandingAdvances] = useState<OutstandingAdvance[]>([])
+  const [newAdvance, setNewAdvance] = useState({ employeeId: '', amount: '', date: today(), reason: '' })
+  const [creatingAdvance, setCreatingAdvance] = useState(false)
+
+  const [repaymentsByEntry, setRepaymentsByEntry] = useState<Record<string, CashAdvanceRepayment[]>>({})
+  const [advancesById, setAdvancesById] = useState<Record<string, CashAdvance>>({})
+  const [repayDrafts, setRepayDrafts] = useState<Record<string, string>>({})
+
+  const [deductionsByEntry, setDeductionsByEntry] = useState<Record<string, PayrollDeduction[]>>({})
+  const [deductionDrafts, setDeductionDrafts] = useState<Record<string, { amount: string; reason: string }>>({})
+
   async function reloadPeriods() {
     setPeriods(await listPayrollPeriods())
+  }
+
+  async function reloadOutstandingAdvances() {
+    setOutstandingAdvances(await listOutstandingCashAdvances())
   }
 
   async function selectPeriod(period: PayrollPeriod) {
@@ -63,6 +95,15 @@ export function PayrollPage() {
       } else {
         setAdjustmentsByEntry({})
       }
+
+      const repayPairs = await Promise.all(entryRows.map(async (e) => [e.id, await listCashAdvanceRepayments(e.id)] as const))
+      setRepaymentsByEntry(Object.fromEntries(repayPairs))
+      const advanceIds = [...new Set(repayPairs.flatMap(([, repayments]) => repayments.map((r) => r.cash_advance_id)))]
+      const advances = await getCashAdvancesByIds(advanceIds)
+      setAdvancesById(Object.fromEntries(advances.map((a) => [a.id, a])))
+
+      const deductionPairs = await Promise.all(entryRows.map(async (e) => [e.id, await listPayrollDeductions(e.id)] as const))
+      setDeductionsByEntry(Object.fromEntries(deductionPairs))
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to load payroll entries')
     } finally {
@@ -72,6 +113,10 @@ export function PayrollPage() {
 
   useEffect(() => {
     reloadPeriods().finally(() => setLoading(false))
+    listEmployees()
+      .then((rows) => setEmployees(rows.map((e) => ({ id: e.id, full_name: e.full_name }))))
+      .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to load employees'))
+    reloadOutstandingAdvances().catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to load cash advances'))
   }, [])
 
   useEffect(() => {
@@ -110,18 +155,143 @@ export function PayrollPage() {
 
   async function saveEntry(entry: Entry) {
     try {
+      // cash_advance/deductions are no longer saved directly here -- they're derived totals kept
+      // in sync by record_cash_advance_repayment()/add_payroll_deduction() (and their undo/remove
+      // counterparts), so managers get an itemized, reasoned trail instead of one opaque number.
       await updatePayrollEntry(entry.id, {
         base_pay: entry.base_pay,
         tips: entry.tips,
         bonus: entry.bonus,
-        cash_advance: entry.cash_advance,
-        deductions: entry.deductions,
         adjustments: entry.adjustments,
+        withholding_tax: entry.withholding_tax,
+        sss_contribution: entry.sss_contribution,
+        philhealth_contribution: entry.philhealth_contribution,
+        pagibig_contribution: entry.pagibig_contribution,
+        sss_loan: entry.sss_loan,
+        hdmf_loan: entry.hdmf_loan,
       })
       if (selected) await selectPeriod(selected)
       toast.success('Saved')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to save')
+    }
+  }
+
+  async function handleCreateAdvance() {
+    const amount = Number(newAdvance.amount)
+    if (!newAdvance.employeeId || Number.isNaN(amount) || amount <= 0) {
+      toast.error('Pick an employee and enter a valid amount')
+      return
+    }
+    setCreatingAdvance(true)
+    try {
+      await createCashAdvance({
+        employeeId: newAdvance.employeeId,
+        amount,
+        advanceDate: newAdvance.date,
+        reason: newAdvance.reason.trim() || null,
+      })
+      setNewAdvance({ employeeId: '', amount: '', date: today(), reason: '' })
+      await reloadOutstandingAdvances()
+      toast.success('Cash advance recorded')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to record cash advance')
+    } finally {
+      setCreatingAdvance(false)
+    }
+  }
+
+  async function handleDeductAdvance(entryId: string, advanceId: string) {
+    const key = `${entryId}:${advanceId}`
+    const amount = Number(repayDrafts[key])
+    if (!repayDrafts[key] || Number.isNaN(amount) || amount <= 0) {
+      toast.error('Enter a valid amount')
+      return
+    }
+    try {
+      await recordCashAdvanceRepayment(advanceId, entryId, amount)
+      setRepayDrafts((prev) => ({ ...prev, [key]: '' }))
+      await reloadOutstandingAdvances()
+      if (selected) await selectPeriod(selected)
+      toast.success('Deduction recorded')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to record deduction')
+    }
+  }
+
+  async function handleUndoRepayment(repaymentId: string) {
+    try {
+      await voidCashAdvanceRepayment(repaymentId)
+      await reloadOutstandingAdvances()
+      if (selected) await selectPeriod(selected)
+      toast.success('Reverted')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to revert deduction')
+    }
+  }
+
+  async function handleAddDeduction(entryId: string) {
+    const draft = deductionDrafts[entryId]
+    const amount = Number(draft?.amount)
+    if (!draft || Number.isNaN(amount) || amount <= 0 || !draft.reason.trim()) {
+      toast.error('Enter a valid amount and a reason')
+      return
+    }
+    try {
+      await addPayrollDeduction(entryId, amount, draft.reason.trim())
+      setDeductionDrafts((prev) => ({ ...prev, [entryId]: { amount: '', reason: '' } }))
+      if (selected) await selectPeriod(selected)
+      toast.success('Deduction recorded')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to record deduction')
+    }
+  }
+
+  async function handleRemoveDeduction(deductionId: string) {
+    try {
+      await removePayrollDeduction(deductionId)
+      if (selected) await selectPeriod(selected)
+      toast.success('Removed')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to remove deduction')
+    }
+  }
+
+  async function handleDownloadPdf(entry: Entry) {
+    if (!settings || !selected) return
+    try {
+      const days = Math.round((new Date(selected.end_date).getTime() - new Date(selected.start_date).getTime()) / 86_400_000) + 1
+      const blob = await pdf(
+        <PayslipPdfDocument
+          businessName={settings.business_name}
+          address={settings.address}
+          employeeName={entry.employeeName}
+          periodLabel={`${selected.start_date} - ${selected.end_date}`}
+          daysInPeriod={days}
+          dateLabel={new Date().toLocaleDateString()}
+          basePay={entry.base_pay}
+          commissionTotal={entry.commission_total}
+          tips={entry.tips}
+          bonus={entry.bonus}
+          cashAdvanceTotal={entry.cash_advance}
+          otherDeductionsTotal={entry.deductions}
+          withholdingTax={entry.withholding_tax}
+          sssContribution={entry.sss_contribution}
+          philhealthContribution={entry.philhealth_contribution}
+          pagibigContribution={entry.pagibig_contribution}
+          sssLoan={entry.sss_loan}
+          hdmfLoan={entry.hdmf_loan}
+          netPay={entry.net_pay}
+        />,
+      ).toBlob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `Payslip - ${entry.employeeName} - ${selected.start_date} to ${selected.end_date}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to generate PDF')
     }
   }
 
@@ -225,6 +395,60 @@ export function PayrollPage() {
             {periods.length === 0 && !loading && <p className="text-muted-foreground">No periods yet.</p>}
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Cash advances</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            <Select value={newAdvance.employeeId} onValueChange={(v) => setNewAdvance((prev) => ({ ...prev, employeeId: v }))}>
+              <SelectTrigger>
+                <SelectValue placeholder="Employee" />
+              </SelectTrigger>
+              <SelectContent>
+                {employees.map((e) => (
+                  <SelectItem key={e.id} value={e.id}>
+                    {e.full_name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Input
+              type="number"
+              step="0.01"
+              placeholder="Amount"
+              value={newAdvance.amount}
+              onChange={(e) => setNewAdvance((prev) => ({ ...prev, amount: e.target.value }))}
+            />
+            <Input type="date" value={newAdvance.date} onChange={(e) => setNewAdvance((prev) => ({ ...prev, date: e.target.value }))} />
+            <Input
+              placeholder="Reason (optional)"
+              value={newAdvance.reason}
+              onChange={(e) => setNewAdvance((prev) => ({ ...prev, reason: e.target.value }))}
+            />
+            <Button disabled={creatingAdvance} onClick={handleCreateAdvance}>
+              Record advance
+            </Button>
+
+            {outstandingAdvances.length > 0 && (
+              <div className="mt-2 flex flex-col gap-2 border-t pt-3">
+                <div className="text-sm font-medium">Outstanding</div>
+                {outstandingAdvances.map((a) => (
+                  <div key={a.id} className="flex flex-col text-sm">
+                    <div className="flex justify-between">
+                      <span>{a.employeeName}</span>
+                      <span className="font-medium">{formatMoney(a.remaining_balance)}</span>
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      {a.advance_date} · of {formatMoney(a.amount)}
+                      {a.reason ? ` · ${a.reason}` : ''}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       <div className="flex flex-col gap-4">
@@ -246,9 +470,14 @@ export function PayrollPage() {
               <Card key={entry.id}>
                 <CardHeader className="flex flex-row items-center justify-between">
                   <CardTitle className="text-base">{entry.employeeName}</CardTitle>
-                  <Button size="sm" variant="outline" onClick={() => setPrintingEntryId(entry.id)}>
-                    Print payslip
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" onClick={() => setPrintingEntryId(entry.id)}>
+                      Print payslip (receipt)
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => handleDownloadPdf(entry)}>
+                      Download PDF payslip
+                    </Button>
+                  </div>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-3">
                   <Table>
@@ -299,32 +528,127 @@ export function PayrollPage() {
                             onBlur={() => saveEntry(entry)}
                           />
                         </TableCell>
-                        <TableCell>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            className="w-24"
-                            disabled={selected.status !== 'draft'}
-                            value={entry.cash_advance}
-                            onChange={(e) => handleEntryChange(entry.id, 'cash_advance', e.target.value)}
-                            onBlur={() => saveEntry(entry)}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            className="w-24"
-                            disabled={selected.status !== 'draft'}
-                            value={entry.deductions}
-                            onChange={(e) => handleEntryChange(entry.id, 'deductions', e.target.value)}
-                            onBlur={() => saveEntry(entry)}
-                          />
-                        </TableCell>
+                        <TableCell>{formatMoney(entry.cash_advance)}</TableCell>
+                        <TableCell>{formatMoney(entry.deductions)}</TableCell>
                         <TableCell className="font-semibold">{formatMoney(entry.net_pay)}</TableCell>
                       </TableRow>
                     </TableBody>
                   </Table>
+
+                  <div className="flex flex-col gap-2 border-t pt-3">
+                    <div className="text-sm font-medium">Cash advance deductions</div>
+                    {(repaymentsByEntry[entry.id] ?? []).map((r) => (
+                      <div key={r.id} className="flex items-center justify-between text-sm text-muted-foreground">
+                        <span>Advance from {advancesById[r.cash_advance_id]?.advance_date ?? '—'}</span>
+                        <span className="flex items-center gap-2">
+                          {formatMoney(r.amount)}
+                          {selected.status === 'draft' && (
+                            <Button size="sm" variant="ghost" onClick={() => handleUndoRepayment(r.id)}>
+                              Undo
+                            </Button>
+                          )}
+                        </span>
+                      </div>
+                    ))}
+                    {selected.status === 'draft' &&
+                      outstandingAdvances
+                        .filter((a) => a.employee_id === entry.employee_id)
+                        .map((a) => {
+                          const key = `${entry.id}:${a.id}`
+                          return (
+                            <div key={a.id} className="flex items-center gap-2">
+                              <span className="flex-1 text-sm">
+                                {a.advance_date} — {formatMoney(a.remaining_balance)} remaining
+                                {a.reason ? ` (${a.reason})` : ''}
+                              </span>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                placeholder="Amount"
+                                className="w-24"
+                                value={repayDrafts[key] ?? ''}
+                                onChange={(e) => setRepayDrafts((prev) => ({ ...prev, [key]: e.target.value }))}
+                              />
+                              <Button size="sm" variant="secondary" onClick={() => handleDeductAdvance(entry.id, a.id)}>
+                                Deduct
+                              </Button>
+                            </div>
+                          )
+                        })}
+                    {(repaymentsByEntry[entry.id] ?? []).length === 0 &&
+                      outstandingAdvances.filter((a) => a.employee_id === entry.employee_id).length === 0 && (
+                        <p className="text-sm text-muted-foreground">No cash advances for this employee.</p>
+                      )}
+                  </div>
+
+                  <div className="flex flex-col gap-2 border-t pt-3">
+                    <div className="text-sm font-medium">Deductions (e.g. backjobs, uniforms, damages)</div>
+                    {(deductionsByEntry[entry.id] ?? []).map((d) => (
+                      <div key={d.id} className="flex items-center justify-between text-sm text-muted-foreground">
+                        <span>{d.reason}</span>
+                        <span className="flex items-center gap-2">
+                          {formatMoney(d.amount)}
+                          {selected.status === 'draft' && (
+                            <Button size="sm" variant="ghost" onClick={() => handleRemoveDeduction(d.id)}>
+                              Remove
+                            </Button>
+                          )}
+                        </span>
+                      </div>
+                    ))}
+                    {selected.status === 'draft' && (
+                      <div className="flex gap-2">
+                        <Input
+                          type="number"
+                          step="0.01"
+                          placeholder="Amount"
+                          className="w-32"
+                          value={deductionDrafts[entry.id]?.amount ?? ''}
+                          onChange={(e) =>
+                            setDeductionDrafts((prev) => ({ ...prev, [entry.id]: { amount: e.target.value, reason: prev[entry.id]?.reason ?? '' } }))
+                          }
+                        />
+                        <Input
+                          placeholder="Reason (e.g. Backjob - Toyota Vios)"
+                          value={deductionDrafts[entry.id]?.reason ?? ''}
+                          onChange={(e) =>
+                            setDeductionDrafts((prev) => ({ ...prev, [entry.id]: { amount: prev[entry.id]?.amount ?? '', reason: e.target.value } }))
+                          }
+                        />
+                        <Button size="sm" variant="secondary" onClick={() => handleAddDeduction(entry.id)}>
+                          Add
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col gap-2 border-t pt-3">
+                    <div className="text-sm font-medium">Statutory deductions (for the formal PDF payslip)</div>
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                      {(
+                        [
+                          ['withholding_tax', 'Withholding tax'],
+                          ['sss_contribution', 'SSS'],
+                          ['philhealth_contribution', 'Philhealth'],
+                          ['pagibig_contribution', 'Pag-ibig'],
+                          ['sss_loan', 'SSS loan'],
+                          ['hdmf_loan', 'HDMF loan'],
+                        ] as const
+                      ).map(([field, label]) => (
+                        <div key={field} className="flex flex-col gap-1">
+                          <Label className="text-xs">{label}</Label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            disabled={selected.status !== 'draft'}
+                            value={entry[field]}
+                            onChange={(e) => handleEntryChange(entry.id, field, e.target.value)}
+                            onBlur={() => saveEntry(entry)}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
 
                   {selected.status !== 'draft' && (
                     <div className="flex flex-col gap-2 border-t pt-3">
@@ -382,8 +706,11 @@ export function PayrollPage() {
               commissionTotal={entry.commission_total}
               tips={entry.tips}
               bonus={entry.bonus}
-              cashAdvance={entry.cash_advance}
-              deductions={entry.deductions}
+              cashAdvanceItems={(repaymentsByEntry[entry.id] ?? []).map((r) => ({
+                label: `Cash advance (${advancesById[r.cash_advance_id]?.advance_date ?? '—'})`,
+                amount: r.amount,
+              }))}
+              deductionItems={(deductionsByEntry[entry.id] ?? []).map((d) => ({ reason: d.reason, amount: d.amount }))}
               adjustments={(adjustmentsByEntry[entry.id] ?? []).map((a) => ({ reason: a.reason, amount: a.amount }))}
               netPay={entry.net_pay}
             />

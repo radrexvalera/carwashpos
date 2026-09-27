@@ -14,18 +14,9 @@ export interface SaleListRow {
 // Manual joins throughout -- this codebase's hand-written types.ts has empty Relationships on
 // every table, so Supabase's embedded-select syntax doesn't type-check here even where it might
 // work at runtime (established pattern, see jobPaymentApi.ts).
-export async function listSales(fromIso: string, toIso: string): Promise<SaleListRow[]> {
-  const { data: sales, error } = await supabase
-    .from('sales')
-    .select('*')
-    .gte('created_at', fromIso)
-    .lte('created_at', toIso)
-    .order('created_at', { ascending: false })
-    .limit(200)
-  if (error) throw error
-
-  const jobIds = [...new Set((sales ?? []).map((s) => s.job_id).filter((id): id is string => !!id))]
-  const customerIds = [...new Set((sales ?? []).map((s) => s.customer_id).filter((id): id is string => !!id))]
+async function buildSaleRows(sales: { id: string; sale_number: string; created_at: string; job_id: string | null; customer_id: string | null; total: number; payment_status: string; status: string }[]): Promise<SaleListRow[]> {
+  const jobIds = [...new Set(sales.map((s) => s.job_id).filter((id): id is string => !!id))]
+  const customerIds = [...new Set(sales.map((s) => s.customer_id).filter((id): id is string => !!id))]
 
   const [jobsRes, customersRes] = await Promise.all([
     jobIds.length ? supabase.from('jobs').select('id, vehicle_id').in('id', jobIds) : Promise.resolve({ data: [], error: null }),
@@ -46,7 +37,7 @@ export async function listSales(fromIso: string, toIso: string): Promise<SaleLis
   const vehicleIdByJobId = new Map((jobsRes.data ?? []).map((j) => [j.id, j.vehicle_id]))
   const nameByCustomerId = new Map((customersRes.data ?? []).map((c) => [c.id, c.full_name]))
 
-  return (sales ?? []).map((s) => ({
+  return sales.map((s) => ({
     id: s.id,
     saleNumber: s.sale_number,
     createdAt: s.created_at,
@@ -56,6 +47,44 @@ export async function listSales(fromIso: string, toIso: string): Promise<SaleLis
     paymentStatus: s.payment_status,
     status: s.status,
   }))
+}
+
+export async function listSales(fromIso: string, toIso: string): Promise<SaleListRow[]> {
+  const { data: sales, error } = await supabase
+    .from('sales')
+    .select('*')
+    .gte('created_at', fromIso)
+    .lte('created_at', toIso)
+    .order('created_at', { ascending: false })
+    .limit(200)
+  if (error) throw error
+  return buildSaleRows(sales ?? [])
+}
+
+// Ignores the date range entirely -- a plate search means "this vehicle's full history",
+// not "this vehicle's history in the last week."
+export async function listSalesByPlate(plateNumber: string): Promise<SaleListRow[]> {
+  const { data: vehicles, error: vehiclesError } = await supabase
+    .from('vehicles')
+    .select('id')
+    .ilike('plate_number', `%${plateNumber}%`)
+  if (vehiclesError) throw vehiclesError
+  const vehicleIds = (vehicles ?? []).map((v) => v.id)
+  if (vehicleIds.length === 0) return []
+
+  const { data: jobs, error: jobsError } = await supabase.from('jobs').select('id').in('vehicle_id', vehicleIds)
+  if (jobsError) throw jobsError
+  const jobIds = (jobs ?? []).map((j) => j.id)
+  if (jobIds.length === 0) return []
+
+  const { data: sales, error: salesError } = await supabase
+    .from('sales')
+    .select('*')
+    .in('job_id', jobIds)
+    .order('created_at', { ascending: false })
+    .limit(200)
+  if (salesError) throw salesError
+  return buildSaleRows(sales ?? [])
 }
 
 export interface SaleDetail {

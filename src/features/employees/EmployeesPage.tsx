@@ -9,10 +9,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { EditEmployeeDialog } from './EditEmployeeDialog'
 import {
   createEmployee,
+  deleteEmployee,
   listEmployeeRoleIds,
   listEmployees,
   listRoles,
@@ -20,6 +24,15 @@ import {
   type Employee,
   type Role,
 } from './api/employeesApi'
+
+const RATE_TYPES = [
+  { value: 'daily', label: 'Per day' },
+  { value: 'weekly', label: 'Per week' },
+  { value: 'semi_monthly', label: 'Semi-monthly' },
+  { value: 'monthly', label: 'Per month' },
+] as const
+
+const RATE_TYPE_LABELS: Record<string, string> = { daily: '/day', weekly: '/week', semi_monthly: '/semi-month', monthly: '/month' }
 
 const employeeSchema = z.object({
   fullName: z.string().min(1, 'Full name is required'),
@@ -39,6 +52,10 @@ export function EmployeesPage() {
   const [employeeRoleIds, setEmployeeRoleIds] = useState<{ employee_id: string; role_id: string }[]>([])
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
+
+  const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null)
+  const [salaryRateType, setSalaryRateType] = useState('none')
+  const [salaryRate, setSalaryRate] = useState('')
 
   const form = useForm<EmployeeFormValues>({
     resolver: zodResolver(employeeSchema),
@@ -74,6 +91,11 @@ export function EmployeesPage() {
 
   async function onSubmit(values: EmployeeFormValues) {
     if (!profile) return
+    const rate = salaryRateType === 'none' ? null : Number(salaryRate)
+    if (salaryRateType !== 'none' && (Number.isNaN(rate) || (rate ?? 0) <= 0)) {
+      toast.error('Enter a valid salary rate')
+      return
+    }
     setSubmitting(true)
     try {
       await createEmployee({
@@ -83,9 +105,13 @@ export function EmployeesPage() {
         mobile: values.mobile || null,
         employeeCode: values.employeeCode || null,
         hireDate: values.hireDate || null,
+        salaryRate: rate,
+        salaryRateType: salaryRateType === 'none' ? null : (salaryRateType as 'daily' | 'weekly' | 'semi_monthly' | 'monthly'),
         roleIds: values.roleIds,
       })
       form.reset()
+      setSalaryRateType('none')
+      setSalaryRate('')
       await reload()
       toast.success('Employee added')
     } catch (err) {
@@ -101,6 +127,17 @@ export function EmployeesPage() {
       await reload()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to update employee')
+    }
+  }
+
+  async function handleDelete(row: Employee) {
+    if (!window.confirm(`Delete ${row.full_name}? This can't be undone.`)) return
+    try {
+      await deleteEmployee(row.id)
+      await reload()
+      toast.success('Employee deleted')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete employee')
     }
   }
 
@@ -176,6 +213,31 @@ export function EmployeesPage() {
                 />
               </div>
 
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="flex flex-col gap-1.5">
+                  <Label>Pay basis</Label>
+                  <Select value={salaryRateType} onValueChange={setSalaryRateType}>
+                    <SelectTrigger className="w-44">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Commission only</SelectItem>
+                      {RATE_TYPES.map((t) => (
+                        <SelectItem key={t.value} value={t.value}>
+                          {t.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {salaryRateType !== 'none' && (
+                  <div className="flex flex-col gap-1.5">
+                    <Label>Rate amount</Label>
+                    <Input type="number" step="0.01" placeholder="e.g. 500" value={salaryRate} onChange={(e) => setSalaryRate(e.target.value)} />
+                  </div>
+                )}
+              </div>
+
               <FormField
                 control={form.control}
                 name="roleIds"
@@ -229,8 +291,10 @@ export function EmployeesPage() {
                 <TableHead>Name</TableHead>
                 <TableHead>Mobile</TableHead>
                 <TableHead>Roles</TableHead>
+                <TableHead>Pay basis</TableHead>
                 <TableHead>Hire date</TableHead>
                 <TableHead className="text-right">Active</TableHead>
+                <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -242,15 +306,30 @@ export function EmployeesPage() {
                   </TableCell>
                   <TableCell>{row.mobile ?? '—'}</TableCell>
                   <TableCell>{rolesFor(row.id).join(', ') || '—'}</TableCell>
+                  <TableCell>
+                    {row.salary_rate != null && row.salary_rate_type
+                      ? `₱${row.salary_rate}${RATE_TYPE_LABELS[row.salary_rate_type] ?? ''}`
+                      : 'Commission only'}
+                  </TableCell>
                   <TableCell>{row.hire_date ?? '—'}</TableCell>
                   <TableCell className="text-right">
                     <Switch checked={row.active} onCheckedChange={() => toggleActive(row)} />
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex justify-end gap-2">
+                      <Button size="sm" variant="outline" onClick={() => setEditingEmployee(row)}>
+                        Edit
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => handleDelete(row)}>
+                        Delete
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
               {!loading && employees.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center text-muted-foreground">
                     No employees yet.
                   </TableCell>
                 </TableRow>
@@ -259,6 +338,14 @@ export function EmployeesPage() {
           </Table>
         </CardContent>
       </Card>
+
+      <EditEmployeeDialog
+        employee={editingEmployee}
+        roles={roles}
+        currentRoleIds={editingEmployee ? employeeRoleIds.filter((er) => er.employee_id === editingEmployee.id).map((er) => er.role_id) : []}
+        onOpenChange={(open) => !open && setEditingEmployee(null)}
+        onSaved={reload}
+      />
     </div>
   )
 }

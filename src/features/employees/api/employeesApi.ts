@@ -29,6 +29,8 @@ export interface CreateEmployeeInput {
   mobile: string | null
   employeeCode: string | null
   hireDate: string | null
+  salaryRate: number | null
+  salaryRateType: 'daily' | 'weekly' | 'semi_monthly' | 'monthly' | null
   roleIds: string[]
 }
 
@@ -42,6 +44,8 @@ export async function createEmployee(input: CreateEmployeeInput) {
       mobile: input.mobile,
       employee_code: input.employeeCode,
       hire_date: input.hireDate,
+      salary_rate: input.salaryRate,
+      salary_rate_type: input.salaryRateType,
     })
     .select('id')
     .single()
@@ -59,6 +63,37 @@ export async function createEmployee(input: CreateEmployeeInput) {
 
 export async function setEmployeeActive(id: string, active: boolean) {
   const { error } = await supabase.from('employees').update({ active }).eq('id', id)
+  if (error) throw error
+}
+
+export interface UpdateEmployeeInput {
+  fullName: string
+  nickname: string | null
+  mobile: string | null
+  employeeCode: string | null
+  hireDate: string | null
+  salaryRate: number | null
+  salaryRateType: 'daily' | 'weekly' | 'semi_monthly' | 'monthly' | null
+}
+
+export async function updateEmployee(id: string, input: UpdateEmployeeInput) {
+  const { error } = await supabase
+    .from('employees')
+    .update({
+      full_name: input.fullName,
+      nickname: input.nickname,
+      mobile: input.mobile,
+      employee_code: input.employeeCode,
+      hire_date: input.hireDate,
+      salary_rate: input.salaryRate,
+      salary_rate_type: input.salaryRateType,
+    })
+    .eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteEmployee(id: string) {
+  const { error } = await supabase.rpc('delete_employee', { p_employee_id: id })
   if (error) throw error
 }
 

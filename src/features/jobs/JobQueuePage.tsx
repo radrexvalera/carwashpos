@@ -82,14 +82,18 @@ export function JobQueuePage() {
 
   async function advance(job: BoardJob, nextStatus: BoardJob['status'], bayId?: string) {
     if (!profile) return
+    // The vehicle is done and waiting for pickup at this point, not occupying the bay anymore --
+    // free it up here (not just on completion) so the next car can pull in while this one's still
+    // parked out front waiting on the customer.
+    const releasingBay = nextStatus === 'ready_for_release'
     try {
       await updateJobStatus({
         tenantId: profile.tenantId,
         boardJobId: job.id,
         clientGeneratedId: job.clientGeneratedId,
         status: nextStatus as 'waiting' | 'ongoing' | 'ready_for_release' | 'completed',
-        bayId: bayId ?? job.bayId,
-        bayEnteredAt: bayId ? new Date().toISOString() : job.bayEnteredAt,
+        bayId: releasingBay ? null : (bayId ?? job.bayId),
+        bayEnteredAt: releasingBay ? null : bayId ? new Date().toISOString() : job.bayEnteredAt,
         completedAt: null,
       })
     } catch (err) {

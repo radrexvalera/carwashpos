@@ -49,10 +49,9 @@ export async function getSalesReport(fromIso: string, toIso: string) {
     serviceRevenue,
     productRevenue,
     byMethod: [...byMethod.entries()].map(([method, total]) => ({ method, total })).sort((a, b) => b.total - a.total),
-    topServices: [...byService.entries()]
+    services: [...byService.entries()]
       .map(([name, v]) => ({ name, ...v }))
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 10),
+      .sort((a, b) => b.total - a.total),
   }
 }
 
