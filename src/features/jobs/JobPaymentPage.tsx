@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Trash2 } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -10,15 +11,33 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@/components/ui/separator'
 import { formatMoney } from '@/lib/money'
 import { useTenant } from '@/app/TenantProvider'
+import { db } from '@/lib/db/dexie'
+import { safeGetItem, safeSetItem } from '@/lib/safeStorage'
+import { useOnlineStatus } from '@/lib/offline/useOnlineStatus'
 import { getActiveShift } from '@/features/shifts/api/shiftsApi'
 import { getSettings, type Settings } from '@/features/settings/api/settingsApi'
-import { createSaleForJob, getJobForPayment } from './api/jobPaymentApi'
+import { createSaleForJob, getJobForPayment, getJobForPaymentOffline, queuePaymentOffline } from './api/jobPaymentApi'
 import { Receipt } from './Receipt'
 import type { InventoryStockLevel } from '@/features/inventory/api/inventoryApi'
 
 type JobService = { id: string; service_id: string; unit_price: number; quantity: number; line_total: number; serviceName: string }
 type PaymentMethod = 'cash' | 'gcash' | 'maya' | 'bank_transfer' | 'card' | 'maribank' | 'gotyme' | 'rcbc' | 'bpi' | 'unionbank' | 'qrph'
 type ProductLine = { itemId: string; name: string; unitPrice: number; quantity: number }
+
+// Distinguishes "the request never reached the server" from "the server rejected it for a real
+// reason". A Postgres/PostgREST error (including one raised inside create_sale() itself) always
+// carries a populated SQLSTATE in `code`; a request that failed before getting a response (DNS
+// failure, no connection, timeout) does not. navigator.onLine is checked too as a cheap first cut,
+// but per syncEngine.ts's own comment it's unreliable in both directions, so it's an OR, not relied
+// on alone.
+function isLikelyNetworkFailure(err: unknown): boolean {
+  if (!navigator.onLine) return true
+  if (err && typeof err === 'object' && 'code' in err) {
+    const code = (err as { code?: unknown }).code
+    return !code
+  }
+  return false
+}
 
 const METHOD_LABELS: Record<PaymentMethod, string> = {
   cash: 'Cash',
@@ -66,9 +85,19 @@ export function JobPaymentPage() {
   const [customer, setCustomer] = useState<{ id: string; full_name: string } | null>(null)
   const [settings, setSettings] = useState<Settings | null>(null)
   const [locationName, setLocationName] = useState('')
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [offlineMode, setOfflineMode] = useState(false)
+
+  const online = useOnlineStatus()
+  // The real, currently-open shift id -- not just a boolean -- cached per-user so create_sale()'s
+  // required shift_id is still available if the live getActiveShift() call below can't run. Keyed
+  // separately from RegisterPage's own hasOpenShift boolean cache since that page never needs the
+  // real id, just whether one exists.
+  const shiftCacheKey = profile ? `openShiftId:${profile.id}` : null
 
   useEffect(() => {
     if (!jobId || !profile) return
+    setLoadError(null)
     Promise.all([getJobForPayment(jobId), getActiveShift(), getSettings(profile.tenantId)])
       .then(([jobData, shift, settingsData]) => {
         setJobNumber(jobData.job.job_number)
@@ -77,10 +106,33 @@ export function JobPaymentPage() {
         setRetailItems(jobData.retailItems)
         setLocationName(jobData.locationName)
         setShiftId(shift?.id ?? null)
+        if (shift?.id && shiftCacheKey) safeSetItem(shiftCacheKey, shift.id)
         setCustomer(jobData.customer)
         setSettings(settingsData)
+        setOfflineMode(false)
       })
-      .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to load job'))
+      .catch(async () => {
+        // The live read failed -- most likely offline. Fall back to whatever's cached locally so
+        // payment can still be collected; create_sale() is the real source of truth and will
+        // reject this at sync time if something's genuinely wrong (e.g. the cached shift was
+        // closed in the meantime), surfaced through the normal failed-mutation recovery UI.
+        try {
+          const jobData = await getJobForPaymentOffline(jobId, profile.tenantId)
+          setJobNumber(jobData.job.job_number)
+          setPlate(jobData.vehicle.plate_number)
+          setJobServices(jobData.jobServices)
+          setRetailItems([])
+          setLocationName(jobData.locationName)
+          const cachedShiftId = shiftCacheKey ? safeGetItem(shiftCacheKey) : null
+          setShiftId(cachedShiftId)
+          setCustomer(jobData.customer)
+          const cachedSettings = await db.settings.get(profile.tenantId)
+          setSettings(cachedSettings ?? null)
+          setOfflineMode(true)
+        } catch (err) {
+          setLoadError(err instanceof Error ? err.message : 'Failed to load job')
+        }
+      })
       .finally(() => setLoading(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobId, profile?.tenantId])
@@ -148,25 +200,48 @@ export function JobPaymentPage() {
   }
 
   async function handleSubmit() {
-    if (!jobId || !shiftId) return
+    if (!jobId || !shiftId || !profile) return
     setSubmitting(true)
+    // Generated once and reused for both the live attempt and the offline-queued fallback below --
+    // create_sale() is idempotent on it, so if the live call actually reached the server but its
+    // response got lost on the way back, the queued retry returns the sale that already exists
+    // instead of billing the customer a second time.
+    const clientGeneratedId = crypto.randomUUID()
+    const saleInput = {
+      tenantId: profile.tenantId,
+      shiftId,
+      jobId,
+      lineItems: jobServices.map((js) => ({ jobServiceId: js.id, discountAmount: Number(discounts[js.id] || 0) })),
+      productLines: productLines.map((p) => ({ itemId: p.itemId, quantity: p.quantity })),
+      payments,
+      manualDiscountType: discountValueNum > 0 ? discountType : undefined,
+      manualDiscountValue: discountValueNum > 0 ? discountValueNum : undefined,
+    }
     try {
-      const sale = await createSaleForJob({
-        shiftId,
-        jobId,
-        lineItems: jobServices.map((js) => ({ jobServiceId: js.id, discountAmount: Number(discounts[js.id] || 0) })),
-        productLines: productLines.map((p) => ({ itemId: p.itemId, quantity: p.quantity })),
-        payments,
-        manualDiscountType: discountValueNum > 0 ? discountType : undefined,
-        manualDiscountValue: discountValueNum > 0 ? discountValueNum : undefined,
-      })
-      setResult({
-        saleNumber: sale.sale_number,
-        total: sale.total,
-        createdAt: sale.created_at,
-        manualDiscountAmount: sale.manual_discount_amount,
-      })
-      toast.success('Payment recorded')
+      try {
+        const sale = await createSaleForJob(saleInput, clientGeneratedId)
+        setResult({
+          saleNumber: sale.sale_number,
+          total: sale.total,
+          createdAt: sale.created_at,
+          manualDiscountAmount: sale.manual_discount_amount,
+        })
+        toast.success('Payment recorded')
+      } catch (err) {
+        if (!isLikelyNetworkFailure(err)) throw err
+        // A genuine validation error (e.g. "payments don't cover the total") has a real Postgres
+        // error code and a working connection behind it -- rethrown above so it surfaces to the
+        // cashier right now instead of being queued as if it might just need a retry. Only an
+        // actual connectivity gap falls through to here.
+        await queuePaymentOffline(saleInput, clientGeneratedId)
+        setResult({
+          saleNumber: `PENDING-${jobNumber}`,
+          total: roundedTotal,
+          createdAt: new Date().toISOString(),
+          manualDiscountAmount: manualDiscountAmount,
+        })
+        toast.success("Payment recorded -- it'll sync once you're back online")
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to record payment')
     } finally {
@@ -176,13 +251,32 @@ export function JobPaymentPage() {
 
   if (loading) return <p className="text-muted-foreground">Loading…</p>
 
+  if (loadError) {
+    return (
+      <div className="mx-auto max-w-md">
+        <Card>
+          <CardContent className="pt-6 text-center">
+            <p className="mb-4 text-muted-foreground">{loadError}</p>
+            <Button variant="outline" onClick={() => navigate('/jobs')}>
+              Back to queue
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
   if (!shiftId) {
     return (
       <div className="mx-auto max-w-md">
         <Card>
           <CardContent className="pt-6 text-center">
-            <p className="mb-4 text-muted-foreground">You need an open shift before collecting payment.</p>
-            <Button onClick={() => navigate('/shift')}>Open a shift</Button>
+            <p className="mb-4 text-muted-foreground">
+              {online
+                ? 'You need an open shift before collecting payment.'
+                : "Can't confirm you have an open shift while offline, and none is cached on this device yet. Open a shift once while online so it's available offline afterward."}
+            </p>
+            {online && <Button onClick={() => navigate('/shift')}>Open a shift</Button>}
           </CardContent>
         </Card>
       </div>
@@ -212,6 +306,11 @@ export function JobPaymentPage() {
           <CardContent className="flex flex-col items-center gap-3 pt-6 text-center">
             <div className="text-lg font-semibold">Payment recorded</div>
             <div className="text-muted-foreground">{result.saleNumber}</div>
+            {result.saleNumber.startsWith('PENDING-') && (
+              <p className="text-xs text-muted-foreground">
+                Saved on this device — it'll get a real invoice number once you're back online.
+              </p>
+            )}
             <div className="text-2xl font-semibold">{formatMoney(result.total)}</div>
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => window.print()}>
@@ -252,7 +351,10 @@ export function JobPaymentPage() {
   return (
     <div className="mx-auto flex max-w-lg flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold">Collect Payment</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-semibold">Collect Payment</h1>
+          {offlineMode && <Badge variant="destructive">Offline — using cached data</Badge>}
+        </div>
         <p className="text-muted-foreground">
           {jobNumber} · {plate}
           {customer && ` · ${customer.full_name}`}

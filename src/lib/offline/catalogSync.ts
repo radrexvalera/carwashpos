@@ -18,6 +18,8 @@ export async function refreshCatalogCache() {
     vehicles,
     customers,
     inventoryItems,
+    locations,
+    settings,
   ] = await Promise.all([
     supabase.from('vehicle_sizes').select('*'),
     supabase.from('service_categories').select('*'),
@@ -30,6 +32,8 @@ export async function refreshCatalogCache() {
     supabase.from('vehicles').select('*'),
     supabase.from('customers').select('*'),
     supabase.from('inventory_items').select('*'),
+    supabase.from('locations').select('*'),
+    supabase.from('settings').select('*'),
   ])
 
   await db.transaction(
@@ -46,6 +50,8 @@ export async function refreshCatalogCache() {
       db.vehicles,
       db.customers,
       db.inventoryItems,
+      db.locations,
+      db.settings,
     ],
     async () => {
       if (vehicleSizes.data) await db.vehicleSizes.bulkPut(vehicleSizes.data)
@@ -59,6 +65,8 @@ export async function refreshCatalogCache() {
       if (vehicles.data) await db.vehicles.bulkPut(vehicles.data)
       if (customers.data) await db.customers.bulkPut(customers.data)
       if (inventoryItems.data) await db.inventoryItems.bulkPut(inventoryItems.data)
+      if (locations.data) await db.locations.bulkPut(locations.data)
+      if (settings.data) await db.settings.bulkPut(settings.data)
     },
   )
 }

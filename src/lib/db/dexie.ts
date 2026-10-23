@@ -1,6 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie'
 import type { Database } from '@/lib/supabase/types'
-import type { BoardJob, BoardTicket, LocalJob, LocalTicket, MutationQueueEntry } from '@/lib/offline/types'
+import type { BoardJob, BoardTicket, CachedJobServiceLine, LocalJob, LocalTicket, MutationQueueEntry } from '@/lib/offline/types'
 
 // Read-cache tables: mirrors of Supabase catalog data, refreshed on reconnect, never locally
 // mutated. The POS (Phase 1) reads services/prices/products/consumables from here so it keeps
@@ -16,6 +16,8 @@ type EmployeeRow = Database['public']['Tables']['employees']['Row']
 type VehicleRow = Database['public']['Tables']['vehicles']['Row']
 type CustomerRow = Database['public']['Tables']['customers']['Row']
 type InventoryItemRow = Database['public']['Tables']['inventory_items']['Row']
+type LocationRow = Database['public']['Tables']['locations']['Row']
+type SettingsRow = Database['public']['Tables']['settings']['Row']
 
 class CarWashDB extends Dexie {
   vehicleSizes!: EntityTable<VehicleSizeRow, 'id'>
@@ -29,6 +31,10 @@ class CarWashDB extends Dexie {
   vehicles!: EntityTable<VehicleRow, 'id'>
   customers!: EntityTable<CustomerRow, 'id'>
   inventoryItems!: EntityTable<InventoryItemRow, 'id'>
+  locations!: EntityTable<LocationRow, 'id'>
+  // One row per tenant (tenant_id IS the primary key server-side too) -- business name/address/
+  // receipt header-footer/logo, needed to print a receipt offline just like everything else here.
+  settings!: EntityTable<SettingsRow, 'tenant_id'>
 
   // Outbox-backed: local optimistic tickets/jobs (keyed by the client-generated id, stable across
   // the whole offline -> synced lifecycle) and the mutation queue that actually drives syncing them.
@@ -41,6 +47,8 @@ class CarWashDB extends Dexie {
   // still indexed so a status-update mutation can find the row it should patch.
   boardTickets!: EntityTable<BoardTicket, 'id'>
   boardJobs!: EntityTable<BoardJob, 'id'>
+  // job_services for every job currently on boardJobs -- see CachedJobServiceLine's own comment.
+  jobServiceLines!: EntityTable<CachedJobServiceLine, 'id'>
 
   constructor() {
     super('carwash-pos')
@@ -92,6 +100,14 @@ class CarWashDB extends Dexie {
       products: null,
       consumables: null,
       inventoryItems: 'id, tenant_id, item_type, category_id',
+    })
+
+    // Collect Payment working fully offline: job_services (+ their real ids/prices) for every open
+    // board job, plus locations/settings, so a sale can be built and printed without a live read.
+    this.version(7).stores({
+      jobServiceLines: 'id, tenantId, jobId',
+      locations: 'id, tenant_id',
+      settings: 'tenant_id',
     })
   }
 }

@@ -1,10 +1,8 @@
+import { db } from '@/lib/db/dexie'
 import { supabase } from '@/lib/supabase/client'
 import type { Json } from '@/lib/supabase/types'
+import { flushMutationQueue } from '@/lib/offline/syncEngine'
 
-// Payment collection is online-only for v1: by the time a job shows on the queue board it's
-// already synced (the board only ever reads server data), and create_sale() needs real
-// job_service ids to bill against -- so this deliberately doesn't go through the offline outbox
-// the way job creation and status updates do.
 export async function getJobForPayment(jobId: string) {
   const { data: job, error: jobError } = await supabase.from('jobs').select('*').eq('id', jobId).single()
   if (jobError) throw jobError
@@ -64,7 +62,47 @@ export async function getJobForPayment(jobId: string) {
   }
 }
 
+// Offline fallback for getJobForPayment() -- reads the exact same shape from Dexie instead of live
+// Supabase queries. boardJobs/jobServiceLines are kept fresh by refreshJobBoardCache() (polled +
+// realtime while the Job Queue is open, which is how a cashier reaches this page in the first
+// place), so a job that was visible on the queue recently has what's needed here. Retail items and
+// the customer name are left out -- Receipt doesn't use either, and they're not worth caching a
+// whole separate read-path for just showing in the page header or upselling a product offline.
+export async function getJobForPaymentOffline(jobId: string, tenantId: string) {
+  const boardJob = await db.boardJobs.get(jobId)
+  if (!boardJob) {
+    throw new Error("This job isn't cached for offline use yet -- open the Job Queue once while online, then try again.")
+  }
+  if (boardJob.isPaid) {
+    throw new Error('This job has already been paid.')
+  }
+
+  const jobServices = await db.jobServiceLines.where('jobId').equals(jobId).toArray()
+  if (jobServices.length === 0) {
+    throw new Error("This job's services aren't cached for offline use yet -- open the Job Queue once while online, then try again.")
+  }
+
+  const locations = await db.locations.where('tenant_id').equals(tenantId).toArray()
+
+  return {
+    job: { job_number: boardJob.jobNumber },
+    vehicle: { plate_number: boardJob.plateNumber, make: boardJob.vehicleMake, model: boardJob.vehicleModel },
+    locationName: locations[0]?.name ?? '',
+    jobServices: jobServices.map((js) => ({
+      id: js.id,
+      service_id: js.serviceId,
+      unit_price: js.unitPrice,
+      quantity: js.quantity,
+      line_total: js.lineTotal,
+      serviceName: js.serviceName,
+    })),
+    retailItems: [] as { id: string; name: string; retail_price: number | null }[],
+    customer: null as { id: string; full_name: string } | null,
+  }
+}
+
 interface CreateSaleInput {
+  tenantId: string
   shiftId: string
   jobId: string | null
   lineItems: { jobServiceId: string; discountAmount: number }[]
@@ -77,9 +115,36 @@ interface CreateSaleInput {
 // Promotions/loyalty/memberships/fleet billing are disabled for now (nav + Collect Payment UI both
 // removed) -- create_sale() still accepts these fields, so this just always sends the "off" values
 // rather than threading unused params through from the caller.
-export async function createSaleForJob(input: CreateSaleInput) {
-  const payload = {
-    client_generated_id: crypto.randomUUID(),
+//
+// clientGeneratedId is accepted (not always generated fresh in here) so a caller that first tries
+// this live and then falls back to queuePaymentOffline() on failure can reuse the exact same id for
+// both attempts -- create_sale() is idempotent on it, so if the live call actually reached the
+// server but the response was lost on the way back, the queued retry returns the sale that already
+// exists instead of silently billing the customer twice.
+export async function createSaleForJob(input: CreateSaleInput, clientGeneratedId: string = crypto.randomUUID()) {
+  const payload = buildSalePayload(input, clientGeneratedId)
+  const { data, error } = await supabase.rpc('create_sale', { payload: payload as unknown as Json })
+  if (error) throw error
+  return data as {
+    id: string
+    sale_number: string
+    status: string
+    total: number
+    created_at: string
+    promotion_discount_amount: number
+    loyalty_discount_amount: number
+    loyalty_points_redeemed: number
+    loyalty_points_earned: number
+    billing_type: string
+    payment_status: string
+    membership_discount_amount: number
+    manual_discount_amount: number
+  }
+}
+
+function buildSalePayload(input: CreateSaleInput, clientGeneratedId: string) {
+  return {
+    client_generated_id: clientGeneratedId,
     shift_id: input.shiftId,
     job_id: input.jobId,
     promotion_id: null,
@@ -108,22 +173,29 @@ export async function createSaleForJob(input: CreateSaleInput) {
       change_given: p.changeGiven,
     })),
   }
+}
 
-  const { data, error } = await supabase.rpc('create_sale', { payload: payload as unknown as Json })
-  if (error) throw error
-  return data as {
-    id: string
-    sale_number: string
-    status: string
-    total: number
-    created_at: string
-    promotion_discount_amount: number
-    loyalty_discount_amount: number
-    loyalty_points_redeemed: number
-    loyalty_points_earned: number
-    billing_type: string
-    payment_status: string
-    membership_discount_amount: number
-    manual_discount_amount: number
-  }
+// Queues create_sale() as an offline mutation (same outbox as job creation/status updates) instead
+// of calling it live -- used when the live attempt in JobPaymentPage fails. Optimistically marks
+// the job "paid" in the local board cache immediately so it can't be double-submitted while the
+// mutation is still in flight; refreshJobBoardCache() re-applies that same override on every
+// refresh until the payment actually lands (or permanently fails), see its own comment.
+export async function queuePaymentOffline(input: CreateSaleInput, clientGeneratedId: string) {
+  if (!input.jobId) throw new Error('A job is required to queue an offline payment')
+
+  await db.mutationQueue.add({
+    id: crypto.randomUUID(),
+    tenantId: input.tenantId,
+    entity: 'job_payment',
+    clientGeneratedId,
+    payload: buildSalePayload(input, clientGeneratedId),
+    createdAt: new Date().toISOString(),
+    retryCount: 0,
+    status: 'pending',
+    sequence: Date.now(),
+  })
+
+  await db.boardJobs.update(input.jobId, { isPaid: true })
+
+  void flushMutationQueue()
 }

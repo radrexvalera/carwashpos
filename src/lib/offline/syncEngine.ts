@@ -127,6 +127,15 @@ export async function flushMutationQueue() {
           // boardJobs, same as job_status_update.
         }
 
+        if (mutation.entity === 'job_payment') {
+          const { error } = await supabase.rpc('create_sale', { payload: mutation.payload as Json })
+          if (error) throw error
+          // boardJobs.isPaid was already set true optimistically when this was queued (and kept
+          // true across refreshes by refreshJobBoardCache's own reconciliation); the real
+          // job_board_entries row round-trips back through the board's poll/Realtime like
+          // everything else, so nothing else to patch here.
+        }
+
         if (mutation.entity === 'job_status_update') {
           const payload = mutation.payload as {
             client_generated_id: string

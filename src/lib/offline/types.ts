@@ -46,7 +46,7 @@ export type MutationStatus = 'pending' | 'syncing' | 'synced' | 'failed'
 export interface MutationQueueEntry {
   id: string
   tenantId: string
-  entity: 'ticket_complete' | 'ticket_status_update' | 'job_create' | 'job_status_update' | 'job_complete'
+  entity: 'ticket_complete' | 'ticket_status_update' | 'job_create' | 'job_status_update' | 'job_complete' | 'job_payment'
   clientGeneratedId: string
   payload: unknown
   createdAt: string
@@ -92,6 +92,22 @@ export interface LocalJob {
   createdAt: string
   syncStatus: JobSyncStatus
   syncError?: string
+}
+
+// Read-cache of job_services for every job currently on the open board, refreshed alongside
+// BoardJob -- lets Collect Payment build a sale offline (it needs real job_service ids/prices,
+// which the denormalized BoardJob summary doesn't carry). Service name is denormalized onto each
+// row so no separate services lookup is needed offline either.
+export interface CachedJobServiceLine {
+  id: string
+  tenantId: string
+  jobId: string
+  serviceId: string
+  serviceName: string
+  unitPrice: number
+  quantity: number
+  lineTotal: number
+  status: string
 }
 
 // Read-cache mirror of the job_board_entries view -- ALL open jobs tenant-wide, refreshed via

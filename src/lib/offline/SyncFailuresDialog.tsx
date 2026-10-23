@@ -11,6 +11,7 @@ const ENTITY_LABELS: Record<MutationQueueEntry['entity'], string> = {
   job_create: 'Create job',
   job_status_update: 'Update job status',
   job_complete: 'Complete job',
+  job_payment: 'Collect payment',
   ticket_complete: 'Complete ticket (legacy)',
   ticket_status_update: 'Update ticket status (legacy)',
 }
@@ -23,9 +24,14 @@ interface SyncFailuresDialogProps {
 export function SyncFailuresDialog({ open, onOpenChange }: SyncFailuresDialogProps) {
   const failedMutations = useLiveQuery(() => db.mutationQueue.where('status').equals('failed').sortBy('sequence'), [], [])
   const jobs = useLiveQuery(() => db.jobs.toArray(), [], [])
+  const boardJobs = useLiveQuery(() => db.boardJobs.toArray(), [], [])
   const [retrying, setRetrying] = useState<string | null>(null)
 
   function plateFor(mutation: MutationQueueEntry) {
+    if (mutation.entity === 'job_payment') {
+      const jobId = (mutation.payload as { job_id?: string }).job_id
+      return (boardJobs ?? []).find((j) => j.id === jobId)?.plateNumber ?? null
+    }
     if (mutation.entity !== 'job_create' && mutation.entity !== 'job_status_update' && mutation.entity !== 'job_complete') return null
     return (jobs ?? []).find((j) => j.clientGeneratedId === mutation.clientGeneratedId)?.vehiclePlate ?? null
   }
