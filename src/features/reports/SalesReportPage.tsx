@@ -6,7 +6,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { formatMoney } from '@/lib/money'
-import { getExpensesByCategory, getSalesReport } from './api/reportsApi'
+import { localDateString } from '@/lib/date'
+import { getCashAdvancesSummary, getExpensesByCategory, getSalesReport } from './api/reportsApi'
 
 const METHOD_LABELS: Record<string, string> = {
   cash: 'Cash',
@@ -16,15 +17,12 @@ const METHOD_LABELS: Record<string, string> = {
   card: 'Card',
 }
 
-function today() {
-  return new Date().toISOString().slice(0, 10)
-}
-
 export function SalesReportPage() {
-  const [from, setFrom] = useState(today())
-  const [to, setTo] = useState(today())
+  const [from, setFrom] = useState(localDateString())
+  const [to, setTo] = useState(localDateString())
   const [sales, setSales] = useState<Awaited<ReturnType<typeof getSalesReport>> | null>(null)
   const [expenses, setExpenses] = useState<Awaited<ReturnType<typeof getExpensesByCategory>> | null>(null)
+  const [cashAdvances, setCashAdvances] = useState<Awaited<ReturnType<typeof getCashAdvancesSummary>> | null>(null)
   const [loading, setLoading] = useState(true)
 
   async function load() {
@@ -32,9 +30,14 @@ export function SalesReportPage() {
     try {
       const fromIso = new Date(`${from}T00:00:00`).toISOString()
       const toIso = new Date(`${to}T23:59:59`).toISOString()
-      const [salesData, expensesData] = await Promise.all([getSalesReport(fromIso, toIso), getExpensesByCategory(from, to)])
+      const [salesData, expensesData, cashAdvancesData] = await Promise.all([
+        getSalesReport(fromIso, toIso),
+        getExpensesByCategory(from, to),
+        getCashAdvancesSummary(from, to),
+      ])
       setSales(salesData)
       setExpenses(expensesData)
+      setCashAdvances(cashAdvancesData)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to load report')
     } finally {
@@ -48,6 +51,55 @@ export function SalesReportPage() {
   }, [])
 
   const net = sales && expenses ? sales.grossSales - expenses.total : 0
+
+  function csvCell(value: string | number) {
+    const str = String(value)
+    return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str
+  }
+
+  function exportCsv() {
+    if (!sales || !expenses || !cashAdvances) return
+    const rows: string[][] = [
+      ['Sales Report', `${from} to ${to}`],
+      [],
+      ['Summary'],
+      ['Metric', 'Value'],
+      ['Gross sales', sales.grossSales.toFixed(2)],
+      ['Sale count', String(sales.saleCount)],
+      ['Voided sales', String(sales.voidedCount)],
+      ['Expenses', expenses.total.toFixed(2)],
+      ['Net', net.toFixed(2)],
+      ['Discounts given', sales.discountTotal.toFixed(2)],
+      ['Promotions given', sales.promotionDiscountTotal.toFixed(2)],
+      ['Cash advances given', cashAdvances.total.toFixed(2)],
+      [],
+      ['Revenue by payment method'],
+      ['Method', 'Total'],
+      ...sales.byMethod.map((m) => [METHOD_LABELS[m.method] ?? m.method, m.total.toFixed(2)]),
+      ['Service revenue', sales.serviceRevenue.toFixed(2)],
+      ['Product revenue', sales.productRevenue.toFixed(2)],
+      [],
+      ['Services'],
+      ['Service', 'Count', 'Total'],
+      ...sales.services.map((s) => [s.name, String(s.count), s.total.toFixed(2)]),
+      [],
+      ['Expenses by category'],
+      ['Category', 'Total'],
+      ...expenses.byCategory.map((c) => [c.name, c.total.toFixed(2)]),
+      [],
+      ['Cash advances by employee'],
+      ['Employee', 'Total'],
+      ...cashAdvances.byEmployee.map((e) => [e.name, e.total.toFixed(2)]),
+    ]
+    const csv = rows.map((row) => row.map(csvCell).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `Sales Report ${from} to ${to}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -69,12 +121,15 @@ export function SalesReportPage() {
           <Button variant="outline" onClick={load} disabled={loading}>
             Refresh
           </Button>
+          <Button variant="outline" onClick={exportCsv} disabled={loading || !sales}>
+            Export CSV
+          </Button>
         </CardContent>
       </Card>
 
       {loading ? (
         <p className="text-muted-foreground">Loading…</p>
-      ) : sales && expenses ? (
+      ) : sales && expenses && cashAdvances ? (
         <>
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
             <Card>
@@ -109,6 +164,12 @@ export function SalesReportPage() {
               <CardContent className="pt-6">
                 <div className="text-sm text-muted-foreground">Promotions given</div>
                 <div className="text-xl font-semibold">{formatMoney(sales.promotionDiscountTotal)}</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <div className="text-sm text-muted-foreground">Cash advances given</div>
+                <div className="text-xl font-semibold">{formatMoney(cashAdvances.total)}</div>
               </CardContent>
             </Card>
           </div>
@@ -156,20 +217,37 @@ export function SalesReportPage() {
             </Card>
           </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Expenses by category</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-2">
-              {expenses.byCategory.length === 0 && <p className="text-sm text-muted-foreground">No expenses in this period.</p>}
-              {expenses.byCategory.map((c) => (
-                <div key={c.name} className="flex justify-between text-sm">
-                  <span>{c.name}</span>
-                  <span className="font-medium">{formatMoney(c.total)}</span>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
+          <div className="grid gap-4 md:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Expenses by category</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-2">
+                {expenses.byCategory.length === 0 && <p className="text-sm text-muted-foreground">No expenses in this period.</p>}
+                {expenses.byCategory.map((c) => (
+                  <div key={c.name} className="flex justify-between text-sm">
+                    <span>{c.name}</span>
+                    <span className="font-medium">{formatMoney(c.total)}</span>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Cash advances by employee</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-2">
+                {cashAdvances.byEmployee.length === 0 && <p className="text-sm text-muted-foreground">No cash advances in this period.</p>}
+                {cashAdvances.byEmployee.map((e) => (
+                  <div key={e.name} className="flex justify-between text-sm">
+                    <span>{e.name}</span>
+                    <span className="font-medium">{formatMoney(e.total)}</span>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          </div>
         </>
       ) : null}
     </div>

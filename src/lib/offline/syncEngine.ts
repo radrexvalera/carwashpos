@@ -8,10 +8,8 @@ type JobStatus = Database['public']['Tables']['jobs']['Row']['status']
 const MAX_RETRIES = 5
 let flushing = false
 
-// Only matters for the "online but this specific request failed transiently" case --
-// flushMutationQueue already short-circuits entirely when offline, so a real connectivity drop is
-// unaffected by this. Jitter so multiple devices retrying the same transient outage don't all hit
-// the server in the same instant.
+// Jitter so multiple devices retrying the same transient outage don't all hit the server in the
+// same instant.
 function backoffMs(retryCount: number) {
   const base = Math.min(3_000 * 2 ** retryCount, 60_000)
   return base + Math.random() * 0.3 * base
@@ -22,8 +20,16 @@ function backoffMs(retryCount: number) {
 // call -- never row-level CRUD sync. A failure on one entry doesn't block the rest of the queue
 // (different tickets are independent), but entries of the SAME logical unit stay in order because
 // they're only ever enqueued as one entry (see plan doc "Design principle" under Dexie sync).
+//
+// Deliberately does NOT gate on navigator.onLine -- that flag only reflects whether the device has
+// SOME active network interface, not whether it can actually reach Supabase (it can be wrong in
+// both directions: true on a WiFi network with no real internet, or false on some VPNs/platforms
+// despite a working connection). Relying on it here meant a wrong reading could block every single
+// sync attempt indefinitely, including the 30s periodic fallback below. A real network request
+// failing is already handled by the retry/backoff logic right below, so that's the actual source
+// of truth for connectivity, not this flag.
 export async function flushMutationQueue() {
-  if (flushing || !navigator.onLine) return
+  if (flushing) return
   flushing = true
 
   try {

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -6,6 +6,7 @@ import { Search, Trash2 } from 'lucide-react'
 import { useTenant } from '@/app/TenantProvider'
 import { db } from '@/lib/db/dexie'
 import { formatMoney } from '@/lib/money'
+import { useOnlineStatus } from '@/lib/offline/useOnlineStatus'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -16,6 +17,7 @@ import type { Database } from '@/lib/supabase/types'
 import type { LocalJobServiceLine } from '@/lib/offline/types'
 import { createCustomer, createVehicle } from '@/features/vehicles/api/vehiclesApi'
 import { EditVehicleDialog } from '@/features/vehicles/EditVehicleDialog'
+import { getActiveShift } from '@/features/shifts/api/shiftsApi'
 import { createJobOffline } from './api/jobMutations'
 
 type VehicleRow = Database['public']['Tables']['vehicles']['Row']
@@ -60,6 +62,39 @@ export function RegisterPage() {
   const [sizeId, setSizeId] = useState('')
   const [lines, setLines] = useState<LocalJobServiceLine[]>([])
   const [submitting, setSubmitting] = useState(false)
+
+  // Shift status is online-only data (no Dexie cache) -- this page is otherwise fully offline-
+  // capable, so genuinely being offline must NOT hard-block job creation here (that would break
+  // the one thing this page is explicitly designed to still do with no connection). Only an
+  // ONLINE, confirmed "no open shift" blocks. The last confirmed state is cached per-user so a
+  // shift opened earlier today still reads as open if connectivity drops later in the same shift.
+  const online = useOnlineStatus()
+  const [shiftCheckDone, setShiftCheckDone] = useState(false)
+  const [hasOpenShift, setHasOpenShift] = useState(false)
+  const shiftCacheKey = profile ? `hasOpenShift:${profile.id}` : null
+
+  useEffect(() => {
+    if (!profile) return
+    if (!online) {
+      setHasOpenShift(shiftCacheKey ? localStorage.getItem(shiftCacheKey) === 'true' : false)
+      setShiftCheckDone(true)
+      return
+    }
+    getActiveShift()
+      .then((shift) => {
+        const open = !!shift
+        setHasOpenShift(open)
+        if (shiftCacheKey) localStorage.setItem(shiftCacheKey, open ? 'true' : 'false')
+      })
+      .catch(() => {
+        // Couldn't verify (e.g. a request that failed despite navigator.onLine saying we're
+        // online) -- fall back to the last confirmed state rather than hard-blocking on a check
+        // that itself didn't succeed.
+        setHasOpenShift(shiftCacheKey ? localStorage.getItem(shiftCacheKey) === 'true' : false)
+      })
+      .finally(() => setShiftCheckDone(true))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.id, online])
 
   const matches = useLiveQuery<VehicleRow[], VehicleRow[]>(
     () =>
@@ -229,6 +264,19 @@ export function RegisterPage() {
     } finally {
       setSubmitting(false)
     }
+  }
+
+  if (shiftCheckDone && online && !hasOpenShift) {
+    return (
+      <div className="mx-auto max-w-md">
+        <Card>
+          <CardContent className="pt-6 text-center">
+            <p className="mb-4 text-muted-foreground">You need an open shift before creating a job.</p>
+            <Button onClick={() => navigate('/shift')}>Open a shift</Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   return (

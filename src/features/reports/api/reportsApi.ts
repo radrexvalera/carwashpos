@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase/client'
+import { localDateString } from '@/lib/date'
 
 export async function getSalesReport(fromIso: string, toIso: string) {
   const { data: sales, error } = await supabase.from('sales').select('*').gte('created_at', fromIso).lte('created_at', toIso)
@@ -80,8 +81,39 @@ export async function getExpensesByCategory(fromIso: string, toIso: string) {
   }
 }
 
+// Advances ISSUED in the period (money that left the register), not repayments -- matches how
+// Expenses is framed ("what went out"), and repayments are already tracked per-payroll-period on
+// the Payroll page rather than by calendar date.
+export async function getCashAdvancesSummary(fromDate: string, toDate: string) {
+  const { data, error } = await supabase
+    .from('cash_advances')
+    .select('employee_id, amount, advance_date')
+    .gte('advance_date', fromDate)
+    .lte('advance_date', toDate)
+  if (error) throw error
+
+  const byEmployee = new Map<string, number>()
+  for (const a of data ?? []) {
+    byEmployee.set(a.employee_id, (byEmployee.get(a.employee_id) ?? 0) + a.amount)
+  }
+
+  const employeeIds = [...byEmployee.keys()]
+  const { data: employees, error: empError } = employeeIds.length
+    ? await supabase.from('employees').select('id, full_name').in('id', employeeIds)
+    : { data: [], error: null }
+  if (empError) throw empError
+  const nameById = new Map((employees ?? []).map((e) => [e.id, e.full_name]))
+
+  return {
+    total: (data ?? []).reduce((sum, a) => sum + a.amount, 0),
+    byEmployee: [...byEmployee.entries()]
+      .map(([employeeId, total]) => ({ name: nameById.get(employeeId) ?? 'Unknown', total }))
+      .sort((a, b) => b.total - a.total),
+  }
+}
+
 export async function getDashboardSummary() {
-  const todayStr = new Date().toISOString().slice(0, 10)
+  const todayStr = localDateString()
   const todayStartIso = new Date(`${todayStr}T00:00:00`).toISOString()
   const todayEndIso = new Date(`${todayStr}T23:59:59`).toISOString()
 
