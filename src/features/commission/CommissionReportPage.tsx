@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { formatMoney } from '@/lib/money'
 import { getCommissionReport } from './api/commissionReportApi'
 
@@ -20,6 +21,7 @@ export function CommissionReportPage() {
   const [to, setTo] = useState(startOfToday())
   const [report, setReport] = useState<Report | null>(null)
   const [loading, setLoading] = useState(true)
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
   async function load() {
     setLoading(true)
@@ -38,6 +40,15 @@ export function CommissionReportPage() {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  function toggle(key: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -85,9 +96,53 @@ export function CommissionReportPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="flex flex-col gap-1 text-sm">
-                {[...emp.byService.values()].map((s, i) => (
-                  <div key={i} className="flex justify-between">
-                    <span>{s.isJobLevel ? s.name : `${s.name} · ${s.count} service${s.count === 1 ? '' : 's'}`}</span>
+                {emp.byRate.map((r) => {
+                  const key = `${emp.employeeId}:${r.rate}`
+                  const isOpen = expanded.has(key)
+                  return (
+                    <div key={r.rate} className="flex flex-col">
+                      <button
+                        type="button"
+                        className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left hover:bg-accent"
+                        onClick={() => toggle(key)}
+                      >
+                        <span>
+                          {isOpen ? '▾' : '▸'} {r.rate}% jobs · {r.count} job{r.count === 1 ? '' : 's'}
+                        </span>
+                        <span className="font-medium">{formatMoney(r.total)}</span>
+                      </button>
+                      {isOpen && (
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Job</TableHead>
+                              <TableHead>Plate</TableHead>
+                              <TableHead>Date</TableHead>
+                              <TableHead className="text-right">Job total</TableHead>
+                              <TableHead className="text-right">Commission</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {r.jobs.map((j) => (
+                              <TableRow key={j.jobId}>
+                                <TableCell>{j.jobNumber}</TableCell>
+                                <TableCell>{j.plateNumber ?? '—'}</TableCell>
+                                <TableCell>{new Date(j.date).toLocaleDateString()}</TableCell>
+                                <TableCell className="text-right">{formatMoney(j.grossAmount)}</TableCell>
+                                <TableCell className="text-right">{formatMoney(j.commissionAmount)}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      )}
+                    </div>
+                  )
+                })}
+                {emp.byService.map((s, i) => (
+                  <div key={i} className="flex justify-between px-2 py-1.5">
+                    <span>
+                      {s.name} · {s.count} service{s.count === 1 ? '' : 's'}
+                    </span>
                     <span>{formatMoney(s.total)}</span>
                   </div>
                 ))}

@@ -1,5 +1,14 @@
 import { supabase } from '@/lib/supabase/client'
 
+export interface CommissionRateJob {
+  jobId: string
+  jobNumber: string
+  plateNumber: string | null
+  date: string
+  grossAmount: number
+  commissionAmount: number
+}
+
 export async function getCommissionReport(from: string, to: string) {
   // No status filter -- a reversal row (negative commission_amount) must be summed in, not
   // excluded, or its original mistaken entry stays fully counted with nothing left to cancel it
@@ -10,8 +19,7 @@ export async function getCommissionReport(from: string, to: string) {
   const employeeIds = [...new Set((entries ?? []).map((e) => e.employee_id))]
   const serviceIds = [...new Set((entries ?? []).map((e) => e.service_id).filter((id): id is string => !!id))]
   // Job-level commission (commission_type 'job_percentage') has no service_id -- grouped per job
-  // instead, so a corrected job's original/reversal/correction rows collapse into one line instead
-  // of either merging with every other job's job-level commission or showing a stale rate/count.
+  // instead of merging with every other job's job-level commission under one bucket.
   const jobIds = [...new Set((entries ?? []).filter((e) => !e.service_id).map((e) => e.job_id))]
 
   const [{ data: employees }, { data: services }, { data: jobs }] = await Promise.all([
@@ -21,12 +29,20 @@ export async function getCommissionReport(from: string, to: string) {
     serviceIds.length
       ? supabase.from('services').select('id, name').in('id', serviceIds)
       : Promise.resolve({ data: [] }),
-    jobIds.length ? supabase.from('jobs').select('id, job_number').in('id', jobIds) : Promise.resolve({ data: [] }),
+    jobIds.length ? supabase.from('jobs').select('id, job_number, vehicle_id').in('id', jobIds) : Promise.resolve({ data: [] }),
   ])
+
+  const vehicleIds = [...new Set((jobs ?? []).map((j) => j.vehicle_id))]
+  const { data: vehicles } = vehicleIds.length
+    ? await supabase.from('vehicles').select('id, plate_number').in('id', vehicleIds)
+    : { data: [] }
 
   const employeeNameById = new Map((employees ?? []).map((e) => [e.id, e.full_name]))
   const serviceNameById = new Map((services ?? []).map((s) => [s.id, s.name]))
   const jobNumberById = new Map((jobs ?? []).map((j) => [j.id, j.job_number]))
+  const plateByVehicleId = new Map((vehicles ?? []).map((v) => [v.id, v.plate_number]))
+  const vehicleIdByJobId = new Map((jobs ?? []).map((j) => [j.id, j.vehicle_id]))
+  const plateByJobId = (jobId: string) => plateByVehicleId.get(vehicleIdByJobId.get(jobId) ?? '') ?? null
 
   const byEmployee = new Map<
     string,
@@ -35,7 +51,14 @@ export async function getCommissionReport(from: string, to: string) {
       employeeName: string
       total: number
       count: number
-      byService: Map<string, { name: string; total: number; count: number; isJobLevel: boolean }>
+      byService: Map<string, { name: string; total: number; count: number }>
+      // Job-level entries only, keyed by (jobId, rate) -- NOT just jobId. A correction's reversal
+      // row carries the SAME rate as the entry it cancels, so summing per (job, rate) naturally
+      // nets a fully-superseded rate to ~0 while the new rate's subtotal stays correct. Picking
+      // "whichever row is latest" instead is unreliable: a reversal + its correction are written
+      // in the same transaction and can share the exact same created_at, making "latest" a coin
+      // flip on query result order.
+      jobLevelByJobRate: Map<string, { jobId: string; rate: number; netAmount: number; lastCreatedAt: string; grossAmount: number }>
     }
   >()
 
@@ -47,26 +70,74 @@ export async function getCommissionReport(from: string, to: string) {
         total: 0,
         count: 0,
         byService: new Map(),
+        jobLevelByJobRate: new Map(),
       })
     }
     const bucket = byEmployee.get(entry.employee_id)!
     bucket.total += entry.commission_amount
     bucket.count += 1
 
-    const groupKey = entry.service_id ?? `job:${entry.job_id}`
-    const serviceName = entry.service_id
-      ? (serviceNameById.get(entry.service_id) ?? 'Unknown')
-      : `Job commission (${jobNumberById.get(entry.job_id) ?? entry.job_id.slice(0, 8)})`
-    if (!bucket.byService.has(groupKey)) {
-      bucket.byService.set(groupKey, { name: serviceName, total: 0, count: 0, isJobLevel: !entry.service_id })
+    if (!entry.service_id) {
+      const key = `${entry.job_id}:${entry.commission_rate}`
+      const existing = bucket.jobLevelByJobRate.get(key)
+      if (!existing) {
+        bucket.jobLevelByJobRate.set(key, {
+          jobId: entry.job_id,
+          rate: entry.commission_rate,
+          netAmount: entry.commission_amount,
+          lastCreatedAt: entry.created_at,
+          grossAmount: entry.gross_service_amount,
+        })
+      } else {
+        existing.netAmount += entry.commission_amount
+        if (entry.created_at > existing.lastCreatedAt) existing.lastCreatedAt = entry.created_at
+      }
+      continue
     }
-    const serviceBucket = bucket.byService.get(groupKey)!
+
+    const serviceName = serviceNameById.get(entry.service_id) ?? 'Unknown'
+    if (!bucket.byService.has(entry.service_id)) {
+      bucket.byService.set(entry.service_id, { name: serviceName, total: 0, count: 0 })
+    }
+    const serviceBucket = bucket.byService.get(entry.service_id)!
     serviceBucket.total += entry.commission_amount
     serviceBucket.count += 1
   }
 
+  const employeeReports = [...byEmployee.values()].map((emp) => {
+    // A job's subtotal at a given rate nets to ~0 once fully reversed, so it naturally drops out
+    // of that rate's bucket on its own -- no "which row is current" guesswork needed.
+    const byRate = new Map<number, { rate: number; count: number; total: number; jobs: CommissionRateJob[] }>()
+    for (const jobRate of emp.jobLevelByJobRate.values()) {
+      if (Math.abs(jobRate.netAmount) < 0.005) continue
+      if (!byRate.has(jobRate.rate)) byRate.set(jobRate.rate, { rate: jobRate.rate, count: 0, total: 0, jobs: [] })
+      const rateBucket = byRate.get(jobRate.rate)!
+      rateBucket.count += 1
+      rateBucket.total += jobRate.netAmount
+      rateBucket.jobs.push({
+        jobId: jobRate.jobId,
+        jobNumber: jobNumberById.get(jobRate.jobId) ?? jobRate.jobId.slice(0, 8),
+        plateNumber: plateByJobId(jobRate.jobId),
+        date: jobRate.lastCreatedAt,
+        grossAmount: jobRate.grossAmount,
+        commissionAmount: jobRate.netAmount,
+      })
+    }
+    for (const rateBucket of byRate.values()) {
+      rateBucket.jobs.sort((a, b) => b.date.localeCompare(a.date))
+    }
+
+    return {
+      employeeId: emp.employeeId,
+      employeeName: emp.employeeName,
+      total: emp.total,
+      byService: [...emp.byService.values()],
+      byRate: [...byRate.values()].sort((a, b) => b.rate - a.rate),
+    }
+  })
+
   return {
     grandTotal: (entries ?? []).reduce((sum, e) => sum + e.commission_amount, 0),
-    employees: [...byEmployee.values()].sort((a, b) => b.total - a.total),
+    employees: employeeReports.sort((a, b) => b.total - a.total),
   }
 }
