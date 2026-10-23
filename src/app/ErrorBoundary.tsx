@@ -30,7 +30,8 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
           <h1 className="text-xl font-semibold">Something went wrong</h1>
           <p className="max-w-md text-muted-foreground">
             The app hit an unexpected error. Your data is safe — any offline changes are still queued and will
-            sync once you reload.
+            sync once you reload. If your connection is weak or intermittent, that's the most likely cause —
+            try again once it's steadier.
           </p>
           <Button onClick={() => window.location.reload()}>Reload</Button>
         </div>

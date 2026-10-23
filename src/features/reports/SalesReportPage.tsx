@@ -112,11 +112,11 @@ export function SalesReportPage() {
         <CardContent className="flex flex-wrap items-end gap-3 pt-6">
           <div className="flex flex-col gap-1.5">
             <Label>From</Label>
-            <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+            <Input type="date" className="w-40" value={from} onChange={(e) => setFrom(e.target.value)} />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label>To</Label>
-            <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+            <Input type="date" className="w-40" value={to} onChange={(e) => setTo(e.target.value)} />
           </div>
           <Button variant="outline" onClick={load} disabled={loading}>
             Refresh

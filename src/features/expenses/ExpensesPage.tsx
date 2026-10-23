@@ -149,7 +149,7 @@ export function ExpensesPage() {
           </div>
           <div className="flex flex-col gap-1.5">
             <Label>Date</Label>
-            <Input type="date" value={expenseDate} onChange={(e) => setExpenseDate(e.target.value)} />
+            <Input type="date" className="w-40" value={expenseDate} onChange={(e) => setExpenseDate(e.target.value)} />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label>Payment method</Label>
@@ -180,11 +180,11 @@ export function ExpensesPage() {
         <CardContent className="flex flex-wrap items-end gap-3 pt-6">
           <div className="flex flex-col gap-1.5">
             <Label>From</Label>
-            <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+            <Input type="date" className="w-40" value={from} onChange={(e) => setFrom(e.target.value)} />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label>To</Label>
-            <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+            <Input type="date" className="w-40" value={to} onChange={(e) => setTo(e.target.value)} />
           </div>
           <div className="ml-auto text-lg font-semibold">Total: {formatMoney(total)}</div>
         </CardContent>

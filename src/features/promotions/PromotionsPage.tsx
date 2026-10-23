@@ -183,11 +183,11 @@ export function PromotionsPage() {
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <Label>Starts (optional)</Label>
-                  <Input type="date" value={form.startsAt} onChange={(e) => setForm((p) => ({ ...p, startsAt: e.target.value }))} />
+                  <Input type="date" className="w-40" value={form.startsAt} onChange={(e) => setForm((p) => ({ ...p, startsAt: e.target.value }))} />
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <Label>Ends (optional)</Label>
-                  <Input type="date" value={form.endsAt} onChange={(e) => setForm((p) => ({ ...p, endsAt: e.target.value }))} />
+                  <Input type="date" className="w-40" value={form.endsAt} onChange={(e) => setForm((p) => ({ ...p, endsAt: e.target.value }))} />
                 </div>
               </div>
               <div className="flex flex-col gap-1.5">

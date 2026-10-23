@@ -1,4 +1,5 @@
-import { lazy, Suspense } from 'react'
+import { Suspense } from 'react'
+import { lazyWithRetry } from '@/lib/lazyWithRetry'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { Toaster } from '@/components/ui/sonner'
 import { AuthProvider } from '@/app/AuthProvider'
@@ -9,51 +10,51 @@ import { RoleGuard } from '@/lib/rbac/RoleGuard'
 // Route-level code splitting -- these 26+ pages were previously all eagerly bundled into one
 // >1MB chunk (the build has warned about this since Phase 5). Each import() becomes its own
 // chunk, fetched only when that route is actually visited.
-const LoginPage = lazy(() => import('@/features/auth/LoginPage').then((m) => ({ default: m.LoginPage })))
-const DashboardPage = lazy(() => import('@/features/dashboard/DashboardPage').then((m) => ({ default: m.DashboardPage })))
-const ServicesPage = lazy(() => import('@/features/catalog/ServicesPage').then((m) => ({ default: m.ServicesPage })))
-const ServiceCategoriesPage = lazy(() =>
+const LoginPage = lazyWithRetry(() => import('@/features/auth/LoginPage').then((m) => ({ default: m.LoginPage })))
+const DashboardPage = lazyWithRetry(() => import('@/features/dashboard/DashboardPage').then((m) => ({ default: m.DashboardPage })))
+const ServicesPage = lazyWithRetry(() => import('@/features/catalog/ServicesPage').then((m) => ({ default: m.ServicesPage })))
+const ServiceCategoriesPage = lazyWithRetry(() =>
   import('@/features/catalog/ServiceCategoriesPage').then((m) => ({ default: m.ServiceCategoriesPage })),
 )
-const VehicleSizesPage = lazy(() => import('@/features/catalog/VehicleSizesPage').then((m) => ({ default: m.VehicleSizesPage })))
-const ServicePricesPage = lazy(() => import('@/features/catalog/ServicePricesPage').then((m) => ({ default: m.ServicePricesPage })))
-const BaysPage = lazy(() => import('@/features/catalog/BaysPage').then((m) => ({ default: m.BaysPage })))
-const EmployeesPage = lazy(() => import('@/features/employees/EmployeesPage').then((m) => ({ default: m.EmployeesPage })))
-const SettingsPage = lazy(() => import('@/features/settings/SettingsPage').then((m) => ({ default: m.SettingsPage })))
-const RegisterPage = lazy(() => import('@/features/jobs/RegisterPage').then((m) => ({ default: m.RegisterPage })))
-const JobQueuePage = lazy(() => import('@/features/jobs/JobQueuePage').then((m) => ({ default: m.JobQueuePage })))
-const JobPaymentPage = lazy(() => import('@/features/jobs/JobPaymentPage').then((m) => ({ default: m.JobPaymentPage })))
-const ShiftPage = lazy(() => import('@/features/shifts/ShiftPage').then((m) => ({ default: m.ShiftPage })))
-const CommissionRulesPage = lazy(() =>
+const VehicleSizesPage = lazyWithRetry(() => import('@/features/catalog/VehicleSizesPage').then((m) => ({ default: m.VehicleSizesPage })))
+const ServicePricesPage = lazyWithRetry(() => import('@/features/catalog/ServicePricesPage').then((m) => ({ default: m.ServicePricesPage })))
+const BaysPage = lazyWithRetry(() => import('@/features/catalog/BaysPage').then((m) => ({ default: m.BaysPage })))
+const EmployeesPage = lazyWithRetry(() => import('@/features/employees/EmployeesPage').then((m) => ({ default: m.EmployeesPage })))
+const SettingsPage = lazyWithRetry(() => import('@/features/settings/SettingsPage').then((m) => ({ default: m.SettingsPage })))
+const RegisterPage = lazyWithRetry(() => import('@/features/jobs/RegisterPage').then((m) => ({ default: m.RegisterPage })))
+const JobQueuePage = lazyWithRetry(() => import('@/features/jobs/JobQueuePage').then((m) => ({ default: m.JobQueuePage })))
+const JobPaymentPage = lazyWithRetry(() => import('@/features/jobs/JobPaymentPage').then((m) => ({ default: m.JobPaymentPage })))
+const ShiftPage = lazyWithRetry(() => import('@/features/shifts/ShiftPage').then((m) => ({ default: m.ShiftPage })))
+const CommissionRulesPage = lazyWithRetry(() =>
   import('@/features/commission/CommissionRulesPage').then((m) => ({ default: m.CommissionRulesPage })),
 )
-const CommissionReportPage = lazy(() =>
+const CommissionReportPage = lazyWithRetry(() =>
   import('@/features/commission/CommissionReportPage').then((m) => ({ default: m.CommissionReportPage })),
 )
-const PayrollPage = lazy(() => import('@/features/payroll/PayrollPage').then((m) => ({ default: m.PayrollPage })))
-const InventoryCategoriesPage = lazy(() =>
+const PayrollPage = lazyWithRetry(() => import('@/features/payroll/PayrollPage').then((m) => ({ default: m.PayrollPage })))
+const InventoryCategoriesPage = lazyWithRetry(() =>
   import('@/features/inventory/InventoryCategoriesPage').then((m) => ({ default: m.InventoryCategoriesPage })),
 )
-const InventoryUnitsPage = lazy(() =>
+const InventoryUnitsPage = lazyWithRetry(() =>
   import('@/features/inventory/InventoryUnitsPage').then((m) => ({ default: m.InventoryUnitsPage })),
 )
-const InventoryItemsPage = lazy(() =>
+const InventoryItemsPage = lazyWithRetry(() =>
   import('@/features/inventory/InventoryItemsPage').then((m) => ({ default: m.InventoryItemsPage })),
 )
-const SuppliersPage = lazy(() => import('@/features/inventory/SuppliersPage').then((m) => ({ default: m.SuppliersPage })))
-const PurchaseOrdersPage = lazy(() =>
+const SuppliersPage = lazyWithRetry(() => import('@/features/inventory/SuppliersPage').then((m) => ({ default: m.SuppliersPage })))
+const PurchaseOrdersPage = lazyWithRetry(() =>
   import('@/features/inventory/PurchaseOrdersPage').then((m) => ({ default: m.PurchaseOrdersPage })),
 )
-const ServiceRecipesPage = lazy(() =>
+const ServiceRecipesPage = lazyWithRetry(() =>
   import('@/features/inventory/ServiceRecipesPage').then((m) => ({ default: m.ServiceRecipesPage })),
 )
-const ExpensesPage = lazy(() => import('@/features/expenses/ExpensesPage').then((m) => ({ default: m.ExpensesPage })))
-const ExpenseCategoriesPage = lazy(() =>
+const ExpensesPage = lazyWithRetry(() => import('@/features/expenses/ExpensesPage').then((m) => ({ default: m.ExpensesPage })))
+const ExpenseCategoriesPage = lazyWithRetry(() =>
   import('@/features/expenses/ExpenseCategoriesPage').then((m) => ({ default: m.ExpenseCategoriesPage })),
 )
-const SalesReportPage = lazy(() => import('@/features/reports/SalesReportPage').then((m) => ({ default: m.SalesReportPage })))
-const AppointmentsPage = lazy(() => import('@/features/appointments/AppointmentsPage').then((m) => ({ default: m.AppointmentsPage })))
-const TransactionsPage = lazy(() => import('@/features/sales/TransactionsPage').then((m) => ({ default: m.TransactionsPage })))
+const SalesReportPage = lazyWithRetry(() => import('@/features/reports/SalesReportPage').then((m) => ({ default: m.SalesReportPage })))
+const AppointmentsPage = lazyWithRetry(() => import('@/features/appointments/AppointmentsPage').then((m) => ({ default: m.AppointmentsPage })))
+const TransactionsPage = lazyWithRetry(() => import('@/features/sales/TransactionsPage').then((m) => ({ default: m.TransactionsPage })))
 
 function RouteLoading() {
   return <p className="p-6 text-muted-foreground">Loading…</p>

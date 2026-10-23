@@ -238,7 +238,7 @@ export function EmployeesPage() {
                     <FormItem>
                       <FormLabel>Hire date</FormLabel>
                       <FormControl>
-                        <Input type="date" {...field} />
+                        <Input type="date" className="w-40" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

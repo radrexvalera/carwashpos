@@ -139,7 +139,7 @@ export function EditEmployeeDialog({ employee, roles, currentRoleIds, onOpenChan
           </div>
           <div className="flex flex-col gap-1">
             <Label>Hire date</Label>
-            <Input type="date" value={hireDate} onChange={(e) => setHireDate(e.target.value)} />
+            <Input type="date" className="w-40" value={hireDate} onChange={(e) => setHireDate(e.target.value)} />
           </div>
         </div>
 

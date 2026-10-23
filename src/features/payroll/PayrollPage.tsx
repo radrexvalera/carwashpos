@@ -359,11 +359,11 @@ export function PayrollPage() {
             </Select>
             <div className="flex flex-col gap-1.5">
               <Label>Start date</Label>
-              <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+              <Input type="date" className="w-40" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label>End date</Label>
-              <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+              <Input type="date" className="w-40" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
             </div>
             <Button disabled={generating} onClick={handleGenerate}>
               Generate
@@ -418,7 +418,7 @@ export function PayrollPage() {
               value={newAdvance.amount}
               onChange={(e) => setNewAdvance((prev) => ({ ...prev, amount: e.target.value }))}
             />
-            <Input type="date" value={newAdvance.date} onChange={(e) => setNewAdvance((prev) => ({ ...prev, date: e.target.value }))} />
+            <Input type="date" className="w-40" value={newAdvance.date} onChange={(e) => setNewAdvance((prev) => ({ ...prev, date: e.target.value }))} />
             <Input
               placeholder="Reason (optional)"
               value={newAdvance.reason}
