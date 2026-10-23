@@ -239,6 +239,11 @@ export function RegisterPage() {
   }
 
   const estimatedTotal = lines.reduce((sum, l) => sum + l.lineTotal, 0)
+  const createJobDisabledReason = !selectedVehicle
+    ? 'Select a vehicle to continue'
+    : lines.length === 0
+      ? 'Add at least one service'
+      : null
 
   async function handleCreateJob() {
     if (!profile || !selectedVehicle || lines.length === 0) return
@@ -517,6 +522,7 @@ export function RegisterPage() {
           >
             Create job
           </Button>
+          {createJobDisabledReason && <p className="text-xs text-destructive">{createJobDisabledReason}</p>}
         </CardContent>
       </Card>
     </div>
@@ -530,6 +536,7 @@ export function RegisterPage() {
       <div>
         <div className="text-xs text-muted-foreground">Estimated total</div>
         <div className="text-lg font-semibold">{formatMoney(estimatedTotal)}</div>
+        {createJobDisabledReason && <div className="text-xs text-destructive">{createJobDisabledReason}</div>}
       </div>
       <Button size="lg" disabled={!selectedVehicle || lines.length === 0 || submitting} onClick={handleCreateJob}>
         Create job
