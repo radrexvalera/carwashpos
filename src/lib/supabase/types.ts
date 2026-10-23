@@ -1436,6 +1436,10 @@ export interface Database {
         Args: { p_period_id: string }
         Returns: Json
       }
+      delete_payroll_period: {
+        Args: { p_period_id: string }
+        Returns: Json
+      }
       create_cash_advance: {
         Args: { p_employee_id: string; p_amount: number; p_advance_date: string; p_reason: string | null }
         Returns: Json

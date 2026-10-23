@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
 import { pdf } from '@react-pdf/renderer'
+import { Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useTenant } from '@/app/TenantProvider'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -20,6 +22,7 @@ import {
   addPayrollAdjustment,
   addPayrollDeduction,
   createCashAdvance,
+  deletePayrollPeriod,
   generatePayrollPeriod,
   getCashAdvancesByIds,
   listCashAdvanceRepayments,
@@ -44,6 +47,36 @@ import {
 type Entry = Awaited<ReturnType<typeof listPayrollEntries>>[number]
 type OutstandingAdvance = Awaited<ReturnType<typeof listOutstandingCashAdvances>>[number]
 
+// Mirrors how each period type is actually meant to span -- daily is just today, weekly is the
+// Monday-Sunday containing today, semi-monthly is the 1st-15th or 16th-end of the current month.
+// Custom is left alone since its whole point is a manually chosen range.
+function computePeriodDates(type: string): { start: string; end: string } | null {
+  const today = new Date()
+  if (type === 'daily') {
+    const d = localDateString(today)
+    return { start: d, end: d }
+  }
+  if (type === 'weekly') {
+    const day = today.getDay()
+    const diffToMonday = day === 0 ? -6 : 1 - day
+    const monday = new Date(today)
+    monday.setDate(today.getDate() + diffToMonday)
+    const sunday = new Date(monday)
+    sunday.setDate(monday.getDate() + 6)
+    return { start: localDateString(monday), end: localDateString(sunday) }
+  }
+  if (type === 'semi_monthly') {
+    const year = today.getFullYear()
+    const month = today.getMonth()
+    const day = today.getDate()
+    if (day <= 15) {
+      return { start: localDateString(new Date(year, month, 1)), end: localDateString(new Date(year, month, 15)) }
+    }
+    return { start: localDateString(new Date(year, month, 16)), end: localDateString(new Date(year, month + 1, 0)) }
+  }
+  return null
+}
+
 
 export function PayrollPage() {
   const { profile } = useTenant()
@@ -57,6 +90,8 @@ export function PayrollPage() {
   const [startDate, setStartDate] = useState(localDateString())
   const [endDate, setEndDate] = useState(localDateString())
   const [generating, setGenerating] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<PayrollPeriod | null>(null)
+  const [deletingPeriod, setDeletingPeriod] = useState(false)
 
   const [adjustmentDrafts, setAdjustmentDrafts] = useState<Record<string, { amount: string; reason: string }>>({})
   const [settings, setSettings] = useState<Settings | null>(null)
@@ -137,12 +172,25 @@ export function PayrollPage() {
     if (printingEntryId) window.print()
   }, [printingEntryId])
 
+  function handlePeriodTypeChange(value: string) {
+    setPeriodType(value)
+    const dates = computePeriodDates(value)
+    if (dates) {
+      setStartDate(dates.start)
+      setEndDate(dates.end)
+    }
+  }
+
   async function handleGenerate() {
     if (!profile) return
     setGenerating(true)
     try {
       const result = await generatePayrollPeriod(periodType, startDate, endDate)
-      toast.success(`Generated ${result.entries_created} entr${result.entries_created === 1 ? 'y' : 'ies'}`)
+      if (result.entries_created === 0) {
+        toast.warning('No entries generated — no employee had commission activity or a configured salary rate in this date range.')
+      } else {
+        toast.success(`Generated ${result.entries_created} entr${result.entries_created === 1 ? 'y' : 'ies'}`)
+      }
       await reloadPeriods()
       const created = (await listPayrollPeriods()).find((p) => p.id === result.id)
       if (created) await selectPeriod(created)
@@ -150,6 +198,26 @@ export function PayrollPage() {
       toast.error(err instanceof Error ? err.message : 'Failed to generate payroll period')
     } finally {
       setGenerating(false)
+    }
+  }
+
+  async function handleDeletePeriod() {
+    if (!deleteTarget) return
+    setDeletingPeriod(true)
+    try {
+      await deletePayrollPeriod(deleteTarget.id)
+      toast.success('Payroll period deleted')
+      if (selected?.id === deleteTarget.id) {
+        setSelected(null)
+        setEntries([])
+      }
+      setDeleteTarget(null)
+      await reloadPeriods()
+      await reloadOutstandingAdvances()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete payroll period')
+    } finally {
+      setDeletingPeriod(false)
     }
   }
 
@@ -364,7 +432,7 @@ export function PayrollPage() {
             <CardTitle>Generate period</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
-            <Select value={periodType} onValueChange={setPeriodType}>
+            <Select value={periodType} onValueChange={handlePeriodTypeChange}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -395,18 +463,29 @@ export function PayrollPage() {
           </CardHeader>
           <CardContent className="flex flex-col gap-1">
             {periods.map((p) => (
-              <button
-                key={p.id}
-                className="flex items-center justify-between rounded-md border p-2 text-left text-sm hover:bg-accent"
-                onClick={() => selectPeriod(p)}
-              >
-                <span>
-                  {p.start_date} → {p.end_date}
-                </span>
-                <Badge variant={p.status === 'paid' ? 'outline' : p.status === 'locked' ? 'secondary' : 'default'}>
-                  {p.status}
-                </Badge>
-              </button>
+              <div key={p.id} className="flex items-center gap-1">
+                <button
+                  className="flex flex-1 items-center justify-between rounded-md border p-2 text-left text-sm hover:bg-accent"
+                  onClick={() => selectPeriod(p)}
+                >
+                  <span>
+                    {p.start_date} → {p.end_date}
+                  </span>
+                  <Badge variant={p.status === 'paid' ? 'outline' : p.status === 'locked' ? 'secondary' : 'default'}>
+                    {p.status}
+                  </Badge>
+                </button>
+                {p.status === 'draft' && (
+                  <Button
+                    size="icon-sm"
+                    variant="ghost"
+                    aria-label="Delete period"
+                    onClick={() => setDeleteTarget(p)}
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
+                )}
+              </div>
             ))}
             {periods.length === 0 && !loading && <p className="text-muted-foreground">No periods yet.</p>}
           </CardContent>
@@ -767,6 +846,26 @@ export function PayrollPage() {
             />
           </div>
         ))}
+
+      <Dialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete payroll period?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {deleteTarget && `${deleteTarget.start_date} → ${deleteTarget.end_date}`} — this permanently removes its generated
+            entries and releases any claimed commission back to be picked up by the next period generated. This can't be undone.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setDeleteTarget(null)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" disabled={deletingPeriod} onClick={handleDeletePeriod}>
+              Delete period
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

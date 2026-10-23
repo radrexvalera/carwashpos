@@ -72,6 +72,11 @@ export async function markPayrollPeriodPaid(periodId: string) {
   if (error) throw error
 }
 
+export async function deletePayrollPeriod(periodId: string) {
+  const { error } = await supabase.rpc('delete_payroll_period', { p_period_id: periodId })
+  if (error) throw error
+}
+
 export async function listPayrollAdjustments(entryId: string) {
   const { data, error } = await supabase
     .from('payroll_adjustments')
