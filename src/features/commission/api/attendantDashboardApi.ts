@@ -35,11 +35,14 @@ export async function getMyCommissionDashboard() {
   const enriched = (entries ?? []).map((e) => ({
     ...e,
     jobNumber: jobNumberById.get(e.job_id) ?? '',
-    // Job-level commission (commission_type 'job_percentage') has no single service_id.
-    serviceName: e.service_id ? (serviceNameById.get(e.service_id) ?? '') : `Job commission (${e.commission_rate}%)`,
+    // Job-level commission (commission_type 'job_percentage') has no single service_id, and its
+    // rate can differ across a job's own rows after a correction, so label by job, not rate.
+    serviceName: e.service_id ? (serviceNameById.get(e.service_id) ?? '') : `Job commission (${jobNumberById.get(e.job_id) ?? ''})`,
   }))
 
-  const todayEntries = enriched.filter((e) => new Date(e.created_at) >= startOfToday && e.status !== 'reversed')
+  // No status filter here either -- a reversal row's negative amount must be summed in to net
+  // against the mistaken entry it corrects, not excluded (see commissionReportApi.ts).
+  const todayEntries = enriched.filter((e) => new Date(e.created_at) >= startOfToday)
 
   return {
     todayCommission: todayEntries.reduce((sum, e) => sum + e.commission_amount, 0),

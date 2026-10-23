@@ -87,9 +87,7 @@ export function CommissionReportPage() {
               <CardContent className="flex flex-col gap-1 text-sm">
                 {[...emp.byService.values()].map((s, i) => (
                   <div key={i} className="flex justify-between">
-                    <span>
-                      {s.name} · {s.count} service{s.count === 1 ? '' : 's'}
-                    </span>
+                    <span>{s.isJobLevel ? s.name : `${s.name} · ${s.count} service${s.count === 1 ? '' : 's'}`}</span>
                     <span>{formatMoney(s.total)}</span>
                   </div>
                 ))}

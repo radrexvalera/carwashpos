@@ -352,6 +352,16 @@ export function JobPaymentPage() {
               ))}
             </SelectContent>
           </Select>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" onClick={() => setAmount(remaining > 0 ? remaining.toFixed(2) : '0')}>
+              Exact Amount
+            </Button>
+            {[200, 500, 1000].map((v) => (
+              <Button key={v} type="button" variant="outline" onClick={() => setAmount(String(v))}>
+                ₱{v.toLocaleString()}
+              </Button>
+            ))}
+          </div>
           <Input
             type="number"
             step="0.01"
