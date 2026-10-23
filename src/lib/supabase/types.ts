@@ -155,6 +155,8 @@ export interface Database {
           numbering_prefix: string
           loyalty_earn_rate: number
           loyalty_redemption_value: number
+          carwash_commission_rate: number
+          other_commission_rate: number
           updated_at: string
         }
         Insert: {
@@ -171,6 +173,8 @@ export interface Database {
           numbering_prefix?: string
           loyalty_earn_rate?: number
           loyalty_redemption_value?: number
+          carwash_commission_rate?: number
+          other_commission_rate?: number
           updated_at?: string
         }
         Update: Partial<Database['public']['Tables']['settings']['Insert']>
@@ -245,6 +249,7 @@ export interface Database {
           name: string
           sort_order: number
           is_active: boolean
+          is_carwash: boolean
           created_at: string
         }
         Insert: {
@@ -253,6 +258,7 @@ export interface Database {
           name: string
           sort_order?: number
           is_active?: boolean
+          is_carwash?: boolean
           created_at?: string
         }
         Update: Partial<Database['public']['Tables']['service_categories']['Insert']>
@@ -913,8 +919,8 @@ export interface Database {
           tenant_id: string
           employee_id: string
           job_id: string
-          job_service_id: string
-          service_id: string
+          job_service_id: string | null
+          service_id: string | null
           gross_service_amount: number
           commission_type: string
           commission_rate: number
@@ -1440,6 +1446,10 @@ export interface Database {
       }
       delete_employee: {
         Args: { p_employee_id: string }
+        Returns: Json
+      }
+      delete_bay: {
+        Args: { p_bay_id: string }
         Returns: Json
       }
       adjust_inventory_stock: {

@@ -233,7 +233,7 @@ export function RegisterPage() {
 
   return (
     <>
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_360px]">
+    <div className="grid grid-cols-1 gap-6 pb-24 lg:grid-cols-[1fr_360px] lg:pb-0">
       <div className="flex flex-col gap-6">
         <div>
           <h1 className="text-2xl font-semibold">Register</h1>
@@ -415,7 +415,7 @@ export function RegisterPage() {
                   <span className="font-medium">{line.serviceName}</span>
                   <div className="flex items-center gap-2">
                     <span className="font-medium">{formatMoney(line.lineTotal)}</span>
-                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => removeLine(i)}>
+                    <Button size="icon" variant="ghost" className="h-9 w-9" onClick={() => removeLine(i)}>
                       <Trash2 className="h-3 w-3" />
                     </Button>
                   </div>
@@ -470,6 +470,19 @@ export function RegisterPage() {
           </Button>
         </CardContent>
       </Card>
+    </div>
+
+    {/* Tablet/phone only -- on the lg sidebar layout the Summary card above is already visible
+        without scrolling, so this would just duplicate it. Below lg, the service list can run
+        long enough that the total + Create button would otherwise require scrolling back up. */}
+    <div className="fixed inset-x-0 bottom-0 z-40 flex items-center justify-between gap-3 border-t bg-background p-3 lg:hidden">
+      <div>
+        <div className="text-xs text-muted-foreground">Estimated total</div>
+        <div className="text-lg font-semibold">{formatMoney(estimatedTotal)}</div>
+      </div>
+      <Button size="lg" disabled={!selectedVehicle || lines.length === 0 || submitting} onClick={handleCreateJob}>
+        Create job
+      </Button>
     </div>
 
     <EditVehicleDialog

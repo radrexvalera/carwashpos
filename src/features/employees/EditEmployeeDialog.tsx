@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { replaceEmployeeRoles, updateEmployee, type Employee, type Role } from './api/employeesApi'
+import { createStaffUser, replaceEmployeeRoles, updateEmployee, type Employee, type Role } from './api/employeesApi'
 
 interface EditEmployeeDialogProps {
   employee: Employee | null
@@ -33,6 +33,10 @@ export function EditEmployeeDialog({ employee, roles, currentRoleIds, onOpenChan
   const [salaryRateType, setSalaryRateType] = useState<string>('none')
   const [roleIds, setRoleIds] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
+  const [grantingLogin, setGrantingLogin] = useState(false)
+  const [loginEmail, setLoginEmail] = useState('')
+  const [loginPassword, setLoginPassword] = useState('')
+  const [creatingLogin, setCreatingLogin] = useState(false)
 
   useEffect(() => {
     if (!employee) return
@@ -44,6 +48,9 @@ export function EditEmployeeDialog({ employee, roles, currentRoleIds, onOpenChan
     setSalaryRate(employee.salary_rate != null ? String(employee.salary_rate) : '')
     setSalaryRateType(employee.salary_rate_type ?? 'none')
     setRoleIds(currentRoleIds)
+    setGrantingLogin(false)
+    setLoginEmail('')
+    setLoginPassword('')
   }, [employee, currentRoleIds])
 
   async function handleSave() {
@@ -72,6 +79,37 @@ export function EditEmployeeDialog({ employee, roles, currentRoleIds, onOpenChan
       toast.error(err instanceof Error ? err.message : 'Failed to update employee')
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function handleGrantLogin() {
+    if (!employee) return
+    if (!loginEmail.trim() || loginPassword.length < 8) {
+      toast.error('Enter an email and a password of at least 8 characters')
+      return
+    }
+    if (roleIds.length === 0) {
+      toast.error('Pick at least one role for their login')
+      return
+    }
+    setCreatingLogin(true)
+    try {
+      await createStaffUser({
+        email: loginEmail.trim(),
+        password: loginPassword,
+        fullName: fullName.trim(),
+        roleIds,
+        employeeId: employee.id,
+      })
+      onSaved()
+      toast.success('Login created')
+      setGrantingLogin(false)
+      setLoginEmail('')
+      setLoginPassword('')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to create login')
+    } finally {
+      setCreatingLogin(false)
     }
   }
 
@@ -153,6 +191,40 @@ export function EditEmployeeDialog({ employee, roles, currentRoleIds, onOpenChan
             ))}
           </div>
         </div>
+
+        {employee && !employee.user_id && (
+          <div className="flex flex-col gap-2 border-t pt-3">
+            {!grantingLogin ? (
+              <Button variant="outline" size="sm" className="w-fit" onClick={() => setGrantingLogin(true)}>
+                Create a login for this person
+              </Button>
+            ) : (
+              <>
+                <Label>Create login</Label>
+                <p className="text-xs text-muted-foreground">
+                  Uses the roles selected above. Save any role changes first if you just changed them.
+                </p>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <Input type="email" placeholder="Email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} />
+                  <Input
+                    type="text"
+                    placeholder="Password (8+ characters)"
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" disabled={creatingLogin} onClick={handleGrantLogin}>
+                    Create login
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setGrantingLogin(false)}>
+                    Cancel
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>

@@ -183,32 +183,32 @@ export function JobQueuePage() {
                     <div className="text-muted-foreground">{elapsed(job.createdAt)}</div>
 
                     {col.status === 'waiting' && (
-                      <Button size="sm" variant="outline" onClick={() => setInspectingJob(job)}>
+                      <Button variant="outline" className="w-full" onClick={() => setInspectingJob(job)}>
                         Inspect
                       </Button>
                     )}
                     {col.status === 'waiting' && (bays ?? []).length > 0 && (
-                      <div className="flex flex-wrap gap-1">
+                      <div className="flex flex-wrap gap-1.5">
                         {(bays ?? []).map((b) => (
-                          <Button key={b.id} size="sm" variant="outline" onClick={() => advance(job, 'ongoing', b.id)}>
+                          <Button key={b.id} variant="outline" onClick={() => advance(job, 'ongoing', b.id)}>
                             → {b.name}
                           </Button>
                         ))}
                       </div>
                     )}
                     {col.status !== 'waiting' && col.next && (
-                      <Button size="sm" onClick={() => advance(job, col.next!)}>
+                      <Button className="h-11 w-full text-base" onClick={() => advance(job, col.next!)}>
                         Move to {COLUMNS.find((c) => c.status === col.next)?.label}
                       </Button>
                     )}
                     {col.status === 'ready_for_release' && (
-                      <Button size="sm" onClick={() => pickedUp(job)}>
+                      <Button className="h-11 w-full text-base" onClick={() => pickedUp(job)}>
                         Picked up
                       </Button>
                     )}
                     {!job.isPaid && (
                       <Link to={`/jobs/${job.id}/pay`}>
-                        <Button size="sm" variant="secondary" className="w-full">
+                        <Button variant="secondary" className="h-11 w-full text-base">
                           Collect payment
                         </Button>
                       </Link>
@@ -234,7 +234,10 @@ export function JobQueuePage() {
         </TabsList>
 
         <TabsContent value="queue" className="flex flex-col gap-4 pt-2">
-          <div className="lg:hidden">
+          {/* Phone only -- a tablet (even portrait) has enough width for the real 2/3-column board
+              below, and crew switching columns all day benefits from seeing them side by side
+              instead of tapping between tabs. */}
+          <div className="md:hidden">
             <Tabs defaultValue={COLUMNS[0].status}>
               <div className="overflow-x-auto">
                 <TabsList className="w-max">
@@ -253,7 +256,7 @@ export function JobQueuePage() {
             </Tabs>
           </div>
 
-          <div className="hidden gap-4 lg:grid lg:grid-cols-3">
+          <div className="hidden gap-4 md:grid md:grid-cols-2 lg:grid-cols-3">
             {COLUMNS.map((col) => (
               <div key={col.status} className="flex flex-col gap-2">
                 <div className="text-sm font-semibold text-muted-foreground">
@@ -266,7 +269,7 @@ export function JobQueuePage() {
         </TabsContent>
 
         <TabsContent value="bays" className="pt-2">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
             {(bays ?? []).map((bay) => {
               const job = bayOccupancy.get(bay.id)
               return (

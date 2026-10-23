@@ -97,6 +97,60 @@ export async function deleteEmployee(id: string) {
   if (error) throw error
 }
 
+export interface CreateStaffUserInput {
+  email: string
+  password: string
+  fullName: string
+  roleIds: string[]
+  employeeId?: string
+  nickname?: string | null
+  mobile?: string | null
+  employeeCode?: string | null
+  hireDate?: string | null
+  salaryRate?: number | null
+  salaryRateType?: 'daily' | 'weekly' | 'semi_monthly' | 'monthly' | null
+}
+
+// Creates a real login (email + password) for a cashier/manager/admin/etc. Needs a service-role
+// key to create another person's account, which must never reach the browser -- that's why this
+// goes through an Edge Function instead of a direct table insert (see
+// supabase/functions/create-staff-user). The function re-checks can_manage_employees itself under
+// the caller's own JWT, so this isn't a client-side-only gate.
+export async function createStaffUser(input: CreateStaffUserInput) {
+  const { data, error } = await supabase.functions.invoke<{ userId: string; employeeId: string }>('create-staff-user', {
+    body: {
+      email: input.email,
+      password: input.password,
+      fullName: input.fullName,
+      roleIds: input.roleIds,
+      employeeId: input.employeeId,
+      nickname: input.nickname,
+      mobile: input.mobile,
+      employeeCode: input.employeeCode,
+      hireDate: input.hireDate,
+      salaryRate: input.salaryRate,
+      salaryRateType: input.salaryRateType,
+    },
+  })
+  if (error) {
+    // supabase-js only gives a generic "non-2xx" message for FunctionsHttpError -- the real
+    // reason is in the response body, which the client wraps but doesn't surface automatically.
+    const context = (error as { context?: Response }).context
+    let serverMessage: string | undefined
+    if (context) {
+      try {
+        const body = await context.clone().json()
+        serverMessage = body?.error
+      } catch {
+        // response wasn't JSON -- fall through to the generic error below
+      }
+    }
+    throw new Error(serverMessage ?? error.message)
+  }
+  if (!data) throw new Error('No response from server')
+  return data
+}
+
 export async function replaceEmployeeRoles(employeeId: string, roleIds: string[]) {
   const { error: deleteError } = await supabase.from('employee_roles').delete().eq('employee_id', employeeId)
   if (deleteError) throw deleteError

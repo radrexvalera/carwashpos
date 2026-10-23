@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form'
 import { toast } from 'sonner'
 import { z } from 'zod'
 import { useTenant } from '@/app/TenantProvider'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -16,6 +17,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { EditEmployeeDialog } from './EditEmployeeDialog'
 import {
   createEmployee,
+  createStaffUser,
   deleteEmployee,
   listEmployeeRoleIds,
   listEmployees,
@@ -56,6 +58,9 @@ export function EmployeesPage() {
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null)
   const [salaryRateType, setSalaryRateType] = useState('none')
   const [salaryRate, setSalaryRate] = useState('')
+  const [createLogin, setCreateLogin] = useState(false)
+  const [loginEmail, setLoginEmail] = useState('')
+  const [loginPassword, setLoginPassword] = useState('')
 
   const form = useForm<EmployeeFormValues>({
     resolver: zodResolver(employeeSchema),
@@ -96,24 +101,52 @@ export function EmployeesPage() {
       toast.error('Enter a valid salary rate')
       return
     }
+    if (createLogin) {
+      if (!loginEmail.trim() || loginPassword.length < 8) {
+        toast.error('Enter an email and a password of at least 8 characters')
+        return
+      }
+      if (values.roleIds.length === 0) {
+        toast.error('Pick at least one role for their login')
+        return
+      }
+    }
     setSubmitting(true)
     try {
-      await createEmployee({
-        tenantId: profile.tenantId,
-        fullName: values.fullName,
-        nickname: values.nickname || null,
-        mobile: values.mobile || null,
-        employeeCode: values.employeeCode || null,
-        hireDate: values.hireDate || null,
-        salaryRate: rate,
-        salaryRateType: salaryRateType === 'none' ? null : (salaryRateType as 'daily' | 'weekly' | 'semi_monthly' | 'monthly'),
-        roleIds: values.roleIds,
-      })
+      if (createLogin) {
+        await createStaffUser({
+          email: loginEmail.trim(),
+          password: loginPassword,
+          fullName: values.fullName,
+          roleIds: values.roleIds,
+          nickname: values.nickname || null,
+          mobile: values.mobile || null,
+          employeeCode: values.employeeCode || null,
+          hireDate: values.hireDate || null,
+          salaryRate: rate,
+          salaryRateType: salaryRateType === 'none' ? null : (salaryRateType as 'daily' | 'weekly' | 'semi_monthly' | 'monthly'),
+        })
+      } else {
+        await createEmployee({
+          tenantId: profile.tenantId,
+          fullName: values.fullName,
+          nickname: values.nickname || null,
+          mobile: values.mobile || null,
+          employeeCode: values.employeeCode || null,
+          hireDate: values.hireDate || null,
+          salaryRate: rate,
+          salaryRateType: salaryRateType === 'none' ? null : (salaryRateType as 'daily' | 'weekly' | 'semi_monthly' | 'monthly'),
+          roleIds: values.roleIds,
+        })
+      }
       form.reset()
       setSalaryRateType('none')
       setSalaryRate('')
+      setCreateLogin(false)
+      setLoginEmail('')
+      setLoginPassword('')
       await reload()
-      toast.success('Employee added')
+      toast.success(createLogin ? 'Employee added with a login' : 'Employee added')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create employee')
     } finally {
@@ -238,12 +271,38 @@ export function EmployeesPage() {
                 )}
               </div>
 
+              <div className="flex flex-col gap-3 rounded-md border p-3">
+                <div className="flex items-center gap-2">
+                  <Switch id="create-login" checked={createLogin} onCheckedChange={setCreateLogin} />
+                  <Label htmlFor="create-login">Create a login for this person</Label>
+                </div>
+                {createLogin && (
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor="login-email">Email</Label>
+                      <Input id="login-email" type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} placeholder="juan@shop.com" />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor="login-password">Password</Label>
+                      <Input
+                        id="login-password"
+                        type="text"
+                        value={loginPassword}
+                        onChange={(e) => setLoginPassword(e.target.value)}
+                        placeholder="At least 8 characters"
+                      />
+                      <p className="text-xs text-muted-foreground">Shown in plain text so you can write it down to give them.</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <FormField
                 control={form.control}
                 name="roleIds"
                 render={() => (
                   <FormItem>
-                    <FormLabel>Roles</FormLabel>
+                    <FormLabel>{createLogin ? 'Roles (determines what they can access)' : 'Roles'}</FormLabel>
                     <div className="flex flex-wrap gap-4">
                       {roles.map((role) => (
                         <FormField
@@ -276,7 +335,7 @@ export function EmployeesPage() {
               />
 
               <Button type="submit" disabled={submitting} className="w-fit">
-                Add employee
+                {createLogin ? 'Add employee + create login' : 'Add employee'}
               </Button>
             </form>
           </Form>
@@ -290,6 +349,7 @@ export function EmployeesPage() {
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>Mobile</TableHead>
+                <TableHead>Login</TableHead>
                 <TableHead>Roles</TableHead>
                 <TableHead>Pay basis</TableHead>
                 <TableHead>Hire date</TableHead>
@@ -305,6 +365,9 @@ export function EmployeesPage() {
                     {row.nickname ? ` (${row.nickname})` : ''}
                   </TableCell>
                   <TableCell>{row.mobile ?? '—'}</TableCell>
+                  <TableCell>
+                    {row.user_id ? <Badge variant="outline">Has login</Badge> : <span className="text-muted-foreground">No login</span>}
+                  </TableCell>
                   <TableCell>{rolesFor(row.id).join(', ') || '—'}</TableCell>
                   <TableCell>
                     {row.salary_rate != null && row.salary_rate_type
@@ -329,7 +392,7 @@ export function EmployeesPage() {
               ))}
               {!loading && employees.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground">
+                  <TableCell colSpan={8} className="text-center text-muted-foreground">
                     No employees yet.
                   </TableCell>
                 </TableRow>

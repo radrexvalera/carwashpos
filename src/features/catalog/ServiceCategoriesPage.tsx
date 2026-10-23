@@ -13,6 +13,7 @@ import {
   createServiceCategory,
   listServiceCategories,
   setServiceCategoryActive,
+  setServiceCategoryCarwash,
   updateServiceCategorySortOrder,
   type ServiceCategory,
 } from './api/catalogApi'
@@ -23,6 +24,7 @@ export function ServiceCategoriesPage() {
   const [loading, setLoading] = useState(true)
   const [name, setName] = useState('')
   const [sortOrder, setSortOrder] = useState('0')
+  const [isCarwash, setIsCarwash] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
   async function reload() {
@@ -45,9 +47,10 @@ export function ServiceCategoriesPage() {
     if (!profile || !name.trim()) return
     setSubmitting(true)
     try {
-      await createServiceCategory({ tenantId: profile.tenantId, name: name.trim(), sortOrder: Number(sortOrder) || 0 })
+      await createServiceCategory({ tenantId: profile.tenantId, name: name.trim(), sortOrder: Number(sortOrder) || 0, isCarwash })
       setName('')
       setSortOrder('0')
+      setIsCarwash(false)
       await reload()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create category')
@@ -59,6 +62,15 @@ export function ServiceCategoriesPage() {
   async function toggleActive(row: ServiceCategory) {
     try {
       await setServiceCategoryActive(row.id, !row.is_active)
+      await reload()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update category')
+    }
+  }
+
+  async function toggleCarwash(row: ServiceCategory) {
+    try {
+      await setServiceCategoryCarwash(row.id, !row.is_carwash)
       await reload()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to update category')
@@ -78,7 +90,11 @@ export function ServiceCategoriesPage() {
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-2xl font-semibold">Service Categories</h1>
-        <p className="text-muted-foreground">Group services for the register and reports (e.g. Wash, Detailing, Add-ons).</p>
+        <p className="text-muted-foreground">
+          Group services for the register and reports (e.g. Wash, Detailing, Add-ons). Categories marked "Counts as
+          carwash" determine crew commission: a job made only of carwash services earns the carwash rate; a job with
+          any other service earns the other rate on its whole total (set both rates on the Commission Rules page).
+        </p>
       </div>
 
       <Card>
@@ -101,6 +117,10 @@ export function ServiceCategoriesPage() {
                 onChange={(e) => setSortOrder(e.target.value)}
               />
             </div>
+            <div className="flex items-center gap-2 pb-2">
+              <Switch id="is-carwash" checked={isCarwash} onCheckedChange={setIsCarwash} />
+              <Label htmlFor="is-carwash">Counts as carwash</Label>
+            </div>
             <Button type="submit" disabled={submitting}>
               Add
             </Button>
@@ -116,6 +136,7 @@ export function ServiceCategoriesPage() {
                 <TableHead />
                 <TableHead>Name</TableHead>
                 <TableHead>Sort order</TableHead>
+                <TableHead className="text-right">Counts as carwash</TableHead>
                 <TableHead className="text-right">Active</TableHead>
               </TableRow>
             </TableHeader>
@@ -133,13 +154,16 @@ export function ServiceCategoriesPage() {
                   <TableCell>{row.name}</TableCell>
                   <TableCell>{row.sort_order}</TableCell>
                   <TableCell className="text-right">
+                    <Switch checked={row.is_carwash} onCheckedChange={() => toggleCarwash(row)} />
+                  </TableCell>
+                  <TableCell className="text-right">
                     <Switch checked={row.is_active} onCheckedChange={() => toggleActive(row)} />
                   </TableCell>
                 </TableRow>
               ))}
               {!loading && categories.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center text-muted-foreground">
+                  <TableCell colSpan={5} className="text-center text-muted-foreground">
                     No categories yet.
                   </TableCell>
                 </TableRow>

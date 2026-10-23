@@ -20,7 +20,7 @@ export async function getMyCommissionDashboard() {
   if (error) throw error
 
   const jobIds = [...new Set((entries ?? []).map((e) => e.job_id))]
-  const serviceIds = [...new Set((entries ?? []).map((e) => e.service_id))]
+  const serviceIds = [...new Set((entries ?? []).map((e) => e.service_id).filter((id): id is string => !!id))]
 
   const [{ data: jobs }, { data: services }] = await Promise.all([
     jobIds.length ? supabase.from('jobs').select('id, job_number').in('id', jobIds) : Promise.resolve({ data: [] }),
@@ -35,7 +35,8 @@ export async function getMyCommissionDashboard() {
   const enriched = (entries ?? []).map((e) => ({
     ...e,
     jobNumber: jobNumberById.get(e.job_id) ?? '',
-    serviceName: serviceNameById.get(e.service_id) ?? '',
+    // Job-level commission (commission_type 'job_percentage') has no single service_id.
+    serviceName: e.service_id ? (serviceNameById.get(e.service_id) ?? '') : `Job commission (${e.commission_rate}%)`,
   }))
 
   const todayEntries = enriched.filter((e) => new Date(e.created_at) >= startOfToday && e.status !== 'reversed')

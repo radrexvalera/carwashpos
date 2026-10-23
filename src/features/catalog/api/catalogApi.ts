@@ -39,17 +39,23 @@ export async function listServiceCategories() {
   return data
 }
 
-export async function createServiceCategory(input: { tenantId: string; name: string; sortOrder: number }) {
+export async function createServiceCategory(input: { tenantId: string; name: string; sortOrder: number; isCarwash: boolean }) {
   const { error } = await supabase.from('service_categories').insert({
     tenant_id: input.tenantId,
     name: input.name,
     sort_order: input.sortOrder,
+    is_carwash: input.isCarwash,
   })
   if (error) throw error
 }
 
 export async function setServiceCategoryActive(id: string, isActive: boolean) {
   const { error } = await supabase.from('service_categories').update({ is_active: isActive }).eq('id', id)
+  if (error) throw error
+}
+
+export async function setServiceCategoryCarwash(id: string, isCarwash: boolean) {
+  const { error } = await supabase.from('service_categories').update({ is_carwash: isCarwash }).eq('id', id)
   if (error) throw error
 }
 
@@ -137,6 +143,11 @@ export async function createBay(input: {
 
 export async function setBayActive(id: string, isActive: boolean) {
   const { error } = await supabase.from('wash_bays').update({ is_active: isActive }).eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteBay(id: string) {
+  const { error } = await supabase.rpc('delete_bay', { p_bay_id: id })
   if (error) throw error
 }
 

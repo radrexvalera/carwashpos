@@ -39,4 +39,9 @@ export async function upsertCommissionRule(input: {
   if (error) throw error
 }
 
+export async function deleteCommissionRule(id: string) {
+  const { error } = await supabase.from('service_commission_rules').delete().eq('id', id)
+  if (error) throw error
+}
+
 export type { CommissionRule }

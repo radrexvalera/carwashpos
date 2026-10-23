@@ -10,7 +10,7 @@ export async function getCommissionReport(from: string, to: string) {
   if (error) throw error
 
   const employeeIds = [...new Set((entries ?? []).map((e) => e.employee_id))]
-  const serviceIds = [...new Set((entries ?? []).map((e) => e.service_id))]
+  const serviceIds = [...new Set((entries ?? []).map((e) => e.service_id).filter((id): id is string => !!id))]
 
   const [{ data: employees }, { data: services }] = await Promise.all([
     employeeIds.length
@@ -43,11 +43,14 @@ export async function getCommissionReport(from: string, to: string) {
     bucket.total += entry.commission_amount
     bucket.count += 1
 
-    const serviceName = serviceNameById.get(entry.service_id) ?? 'Unknown'
-    if (!bucket.byService.has(entry.service_id)) {
-      bucket.byService.set(entry.service_id, { name: serviceName, total: 0, count: 0 })
+    // Job-level commission (commission_type 'job_percentage') isn't tied to one service line --
+    // service_id is null -- so it's grouped under its own bucket instead of an ambiguous "Unknown".
+    const groupKey = entry.service_id ?? 'job_percentage'
+    const serviceName = entry.service_id ? (serviceNameById.get(entry.service_id) ?? 'Unknown') : `Job commission (${entry.commission_rate}%)`
+    if (!bucket.byService.has(groupKey)) {
+      bucket.byService.set(groupKey, { name: serviceName, total: 0, count: 0 })
     }
-    const serviceBucket = bucket.byService.get(entry.service_id)!
+    const serviceBucket = bucket.byService.get(groupKey)!
     serviceBucket.total += entry.commission_amount
     serviceBucket.count += 1
   }

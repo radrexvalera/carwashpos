@@ -287,7 +287,7 @@ export function JobPaymentPage() {
                 </span>
                 <div className="flex items-center gap-2">
                   <span>{formatMoney(p.unitPrice * p.quantity)}</span>
-                  <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => removeProductLine(p.itemId)}>
+                  <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => removeProductLine(p.itemId)}>
                     <Trash2 className="h-3 w-3" />
                   </Button>
                 </div>
@@ -324,7 +324,7 @@ export function JobPaymentPage() {
                     <Button
                       size="icon"
                       variant="ghost"
-                      className="h-6 w-6"
+                      className="h-8 w-8"
                       onClick={() => setPayments((prev) => prev.filter((_, idx) => idx !== i))}
                     >
                       <Trash2 className="h-3 w-3" />

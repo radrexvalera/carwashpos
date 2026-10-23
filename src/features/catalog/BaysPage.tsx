@@ -9,7 +9,7 @@ import { Switch } from '@/components/ui/switch'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ReorderButtons } from '@/components/ReorderButtons'
 import { moveInSortOrder } from '@/lib/sortOrder'
-import { createBay, listBays, listLocations, setBayActive, updateBaySortOrder, type Bay, type Location } from './api/catalogApi'
+import { createBay, deleteBay, listBays, listLocations, setBayActive, updateBaySortOrder, type Bay, type Location } from './api/catalogApi'
 
 export function BaysPage() {
   const { profile } = useTenant()
@@ -67,6 +67,17 @@ export function BaysPage() {
     }
   }
 
+  async function handleDelete(row: Bay) {
+    if (!window.confirm(`Delete ${row.name}? This can't be undone.`)) return
+    try {
+      await deleteBay(row.id)
+      await reload()
+      toast.success('Bay deleted')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete bay')
+    }
+  }
+
   async function moveRow(index: number, direction: -1 | 1) {
     try {
       await moveInSortOrder(bays, index, direction, updateBaySortOrder)
@@ -119,6 +130,7 @@ export function BaysPage() {
                 <TableHead>Name</TableHead>
                 <TableHead>Sort order</TableHead>
                 <TableHead className="text-right">Active</TableHead>
+                <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -137,11 +149,16 @@ export function BaysPage() {
                   <TableCell className="text-right">
                     <Switch checked={row.is_active} onCheckedChange={() => toggleActive(row)} />
                   </TableCell>
+                  <TableCell className="text-right">
+                    <Button size="sm" variant="ghost" onClick={() => handleDelete(row)}>
+                      Delete
+                    </Button>
+                  </TableCell>
                 </TableRow>
               ))}
               {!loading && bays.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center text-muted-foreground">
+                  <TableCell colSpan={5} className="text-center text-muted-foreground">
                     No bays yet.
                   </TableCell>
                 </TableRow>
