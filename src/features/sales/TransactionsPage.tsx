@@ -228,6 +228,12 @@ export function TransactionsPage() {
                     <span className="text-muted-foreground">Subtotal</span>
                     <span>{formatMoney(detail.subtotal)}</span>
                   </div>
+                  {detail.manualDiscount > 0 && (
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Discount</span>
+                      <span>−{formatMoney(detail.manualDiscount)}</span>
+                    </div>
+                  )}
                   {detail.promotionDiscount > 0 && (
                     <div className="flex justify-between text-muted-foreground">
                       <span>Promotion discount</span>
@@ -287,6 +293,7 @@ export function TransactionsPage() {
                     createdAt={detail.createdAt}
                     items={detail.items}
                     subtotal={detail.subtotal}
+                    discount={detail.manualDiscount}
                     promotionDiscount={detail.promotionDiscount}
                     membershipDiscount={detail.membershipDiscount}
                     total={detail.total}

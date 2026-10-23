@@ -70,6 +70,8 @@ interface CreateSaleInput {
   lineItems: { jobServiceId: string; discountAmount: number }[]
   productLines: { itemId: string; quantity: number }[]
   payments: { method: string; amount: number; referenceNote?: string; tenderedAmount?: number; changeGiven?: number }[]
+  manualDiscountType?: 'percentage' | 'fixed'
+  manualDiscountValue?: number
 }
 
 // Promotions/loyalty/memberships/fleet billing are disabled for now (nav + Collect Payment UI both
@@ -84,6 +86,8 @@ export async function createSaleForJob(input: CreateSaleInput) {
     loyalty_points_redeemed: 0,
     billing_type: 'immediate',
     membership_redemption: null,
+    manual_discount_type: input.manualDiscountType ?? null,
+    manual_discount_value: input.manualDiscountValue ?? null,
     line_items: [
       ...input.lineItems.map((l) => ({
         line_type: 'job_service',
@@ -120,5 +124,6 @@ export async function createSaleForJob(input: CreateSaleInput) {
     billing_type: string
     payment_status: string
     membership_discount_amount: number
+    manual_discount_amount: number
   }
 }

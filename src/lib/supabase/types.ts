@@ -860,6 +860,9 @@ export interface Database {
           membership_program_id: string | null
           membership_redeemed_job_service_id: string | null
           membership_discount_amount: number
+          manual_discount_type: 'percentage' | 'fixed' | null
+          manual_discount_value: number | null
+          manual_discount_amount: number
         }
         Insert: never
         Update: never

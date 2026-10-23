@@ -44,7 +44,7 @@ export async function getSalesReport(fromIso: string, toIso: string) {
     saleCount: completed.length,
     voidedCount,
     grossSales: completed.reduce((sum, s) => sum + s.total, 0),
-    discountTotal: completed.reduce((sum, s) => sum + s.discount_total, 0),
+    discountTotal: completed.reduce((sum, s) => sum + s.discount_total + s.manual_discount_amount, 0),
     promotionDiscountTotal: completed.reduce((sum, s) => sum + s.promotion_discount_amount, 0),
     serviceRevenue,
     productRevenue,

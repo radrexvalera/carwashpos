@@ -26,6 +26,7 @@ interface ReceiptProps {
   createdAt: string
   items: ReceiptLineItem[]
   subtotal: number
+  discount?: number
   promotionDiscount: number
   membershipDiscount: number
   total: number
@@ -58,6 +59,7 @@ export function Receipt({
   createdAt,
   items,
   subtotal,
+  discount,
   promotionDiscount,
   membershipDiscount,
   total,
@@ -102,6 +104,7 @@ export function Receipt({
 
       <div className="flex flex-col gap-0.5">
         <Row label="SUBTOTAL" value={formatMoney(subtotal)} />
+        {!!discount && discount > 0 && <Row label="Discount" value={`-${formatMoney(discount)}`} />}
         {promotionDiscount > 0 && <Row label="Promotion discount" value={`-${formatMoney(promotionDiscount)}`} />}
         {membershipDiscount > 0 && <Row label="Free service" value={`-${formatMoney(membershipDiscount)}`} />}
         <Row label="TOTAL" value={formatMoney(total)} bold />

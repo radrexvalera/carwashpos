@@ -96,6 +96,7 @@ export interface SaleDetail {
   plateNumber: string | null
   items: { name: string; quantity: number; unitPrice: number; lineTotal: number }[]
   subtotal: number
+  manualDiscount: number
   promotionDiscount: number
   membershipDiscount: number
   total: number
@@ -154,6 +155,7 @@ export async function getSaleDetail(saleId: string): Promise<SaleDetail> {
       lineTotal: i.line_total,
     })),
     subtotal: sale.subtotal,
+    manualDiscount: sale.manual_discount_amount,
     promotionDiscount: sale.promotion_discount_amount,
     membershipDiscount: sale.membership_discount_amount,
     total: sale.total,

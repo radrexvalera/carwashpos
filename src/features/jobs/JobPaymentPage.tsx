@@ -5,6 +5,7 @@ import { Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { formatMoney } from '@/lib/money'
@@ -44,6 +45,8 @@ export function JobPaymentPage() {
   const [plate, setPlate] = useState('')
   const [jobServices, setJobServices] = useState<JobService[]>([])
   const [discounts, setDiscounts] = useState<Record<string, string>>({})
+  const [discountType, setDiscountType] = useState<'percentage' | 'fixed'>('percentage')
+  const [discountValue, setDiscountValue] = useState('')
   const [retailItems, setRetailItems] = useState<InventoryStockLevel[]>([])
   const [productLines, setProductLines] = useState<ProductLine[]>([])
   const [pickedItemId, setPickedItemId] = useState('')
@@ -58,6 +61,7 @@ export function JobPaymentPage() {
     saleNumber: string
     total: number
     createdAt: string
+    manualDiscountAmount: number
   } | null>(null)
   const [customer, setCustomer] = useState<{ id: string; full_name: string } | null>(null)
   const [settings, setSettings] = useState<Settings | null>(null)
@@ -88,7 +92,20 @@ export function JobPaymentPage() {
   const productsTotal = productLines.reduce((sum, p) => sum + p.unitPrice * p.quantity, 0)
   const preDiscountTotal = Math.round((servicesTotal + productsTotal) * 100) / 100
 
-  const roundedTotal = Math.max(0, preDiscountTotal)
+  // Applied on top of the per-service discounts above -- same base a promotion would use on the
+  // server (create_sale() mirrors this exact computation), so the live preview here matches what
+  // actually gets charged.
+  const discountValueNum = Number(discountValue) || 0
+  const manualDiscountAmount =
+    discountValueNum > 0
+      ? Math.round(
+          (discountType === 'percentage'
+            ? (preDiscountTotal * Math.min(discountValueNum, 100)) / 100
+            : Math.min(discountValueNum, preDiscountTotal)) * 100,
+        ) / 100
+      : 0
+
+  const roundedTotal = Math.max(0, preDiscountTotal - manualDiscountAmount)
   const paidSoFar = payments.reduce((sum, p) => sum + p.amount, 0)
   const remaining = Math.round((roundedTotal - paidSoFar) * 100) / 100
   // create_sale() requires payments to sum exactly to the total -- a payment amount is money
@@ -140,11 +157,14 @@ export function JobPaymentPage() {
         lineItems: jobServices.map((js) => ({ jobServiceId: js.id, discountAmount: Number(discounts[js.id] || 0) })),
         productLines: productLines.map((p) => ({ itemId: p.itemId, quantity: p.quantity })),
         payments,
+        manualDiscountType: discountValueNum > 0 ? discountType : undefined,
+        manualDiscountValue: discountValueNum > 0 ? discountValueNum : undefined,
       })
       setResult({
         saleNumber: sale.sale_number,
         total: sale.total,
         createdAt: sale.created_at,
+        manualDiscountAmount: sale.manual_discount_amount,
       })
       toast.success('Payment recorded')
     } catch (err) {
@@ -216,6 +236,7 @@ export function JobPaymentPage() {
               createdAt={result.createdAt}
               items={receiptItems}
               subtotal={preDiscountTotal}
+              discount={result.manualDiscountAmount}
               promotionDiscount={0}
               membershipDiscount={0}
               total={result.total}
@@ -304,7 +325,55 @@ export function JobPaymentPage() {
       )}
 
       <Card>
+        <CardHeader>
+          <CardTitle>Discount on total</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-wrap items-end gap-2">
+          <div className="flex flex-col gap-1.5">
+            <Label>Type</Label>
+            <Select value={discountType} onValueChange={(v) => setDiscountType(v as 'percentage' | 'fixed')}>
+              <SelectTrigger className="w-36">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="percentage">Percentage</SelectItem>
+                <SelectItem value="fixed">Fixed amount</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label>{discountType === 'percentage' ? 'Percent off' : 'Amount off'}</Label>
+            <Input
+              type="number"
+              step="0.01"
+              min="0"
+              max={discountType === 'percentage' ? 100 : undefined}
+              className="w-28"
+              placeholder="0"
+              value={discountValue}
+              onChange={(e) => setDiscountValue(e.target.value)}
+            />
+          </div>
+          {manualDiscountAmount > 0 && (
+            <span className="pb-2 text-sm text-muted-foreground">-{formatMoney(manualDiscountAmount)}</span>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
         <CardContent className="flex flex-col gap-1 pt-6">
+          {manualDiscountAmount > 0 && (
+            <div className="flex justify-between text-sm text-muted-foreground">
+              <span>Subtotal</span>
+              <span>{formatMoney(preDiscountTotal)}</span>
+            </div>
+          )}
+          {manualDiscountAmount > 0 && (
+            <div className="flex justify-between text-sm text-muted-foreground">
+              <span>Discount</span>
+              <span>-{formatMoney(manualDiscountAmount)}</span>
+            </div>
+          )}
           <div className="flex justify-between text-lg font-semibold">
             <span>Total</span>
             <span>{formatMoney(roundedTotal)}</span>
