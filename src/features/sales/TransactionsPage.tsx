@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { formatMoney } from '@/lib/money'
 import { getSettings, type Settings } from '@/features/settings/api/settingsApi'
+import { EditCrewDialog } from '@/features/jobs/EditCrewDialog'
 import { Receipt } from '@/features/jobs/Receipt'
 import { getSaleDetail, listSales, listSalesByPlate, type SaleDetail, type SaleListRow } from './api/salesApi'
 
@@ -35,6 +36,7 @@ export function TransactionsPage() {
   const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null)
   const [detail, setDetail] = useState<SaleDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
+  const [editingCrewJobId, setEditingCrewJobId] = useState<string | null>(null)
 
   async function load() {
     setLoading(true)
@@ -268,9 +270,16 @@ export function TransactionsPage() {
                   )}
                 </div>
 
-                <Button variant="outline" className="mt-2 w-fit" onClick={() => window.print()}>
-                  Print receipt
-                </Button>
+                <div className="mt-2 flex gap-2">
+                  <Button variant="outline" onClick={() => window.print()}>
+                    Print receipt
+                  </Button>
+                  {detail.jobId && (
+                    <Button variant="outline" onClick={() => setEditingCrewJobId(detail.jobId)}>
+                      Edit crew
+                    </Button>
+                  )}
+                </div>
               </div>
 
               {settings && (
@@ -299,6 +308,15 @@ export function TransactionsPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      {profile && (
+        <EditCrewDialog
+          jobId={editingCrewJobId}
+          tenantId={profile.tenantId}
+          onOpenChange={(o) => !o && setEditingCrewJobId(null)}
+          onSaved={() => {}}
+        />
+      )}
     </>
   )
 }

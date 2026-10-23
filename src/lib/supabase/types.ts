@@ -745,7 +745,15 @@ export interface Database {
           split_percentage: number | null
           created_at: string
         }
-        Insert: never
+        Insert: {
+          id?: string
+          tenant_id: string
+          job_service_id: string
+          employee_id: string
+          role_in_job?: string | null
+          split_percentage?: number | null
+          created_at?: string
+        }
         Update: never
         Relationships: []
       }
@@ -1450,6 +1458,10 @@ export interface Database {
       }
       delete_bay: {
         Args: { p_bay_id: string }
+        Returns: Json
+      }
+      recompute_job_commission: {
+        Args: { p_job_id: string }
         Returns: Json
       }
       adjust_inventory_stock: {

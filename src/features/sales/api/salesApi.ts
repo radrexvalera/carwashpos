@@ -92,6 +92,7 @@ export interface SaleDetail {
   createdAt: string
   locationName: string
   cashierName: string
+  jobId: string | null
   plateNumber: string | null
   items: { name: string; quantity: number; unitPrice: number; lineTotal: number }[]
   subtotal: number
@@ -139,6 +140,7 @@ export async function getSaleDetail(saleId: string): Promise<SaleDetail> {
     createdAt: sale.created_at,
     locationName: locationRes.data.name,
     cashierName: cashierRes.data.full_name,
+    jobId: sale.job_id,
     plateNumber,
     items: (itemsRes.data ?? []).map((i) => ({
       name: i.description,
