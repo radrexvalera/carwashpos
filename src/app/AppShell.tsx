@@ -124,6 +124,21 @@ const navLinkClassName = ({ isActive }: { isActive: boolean }) =>
     isActive && 'bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary',
   )
 
+// Candidates for the tablet/phone bottom bar, in priority order -- filtered by role, then capped
+// at 4 direct links (plus the always-present "More" button) so it stays touch-friendly instead of
+// cramming in every destination. Reports is admin/manager-only, so a cashier sees Transactions in
+// that slot instead rather than a dead/inaccessible button.
+const bottomNavCandidates: (NavLeaf & { roles?: Role[] })[] = [
+  { to: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { to: '/register', label: 'Register', icon: ShoppingCart },
+  { to: '/jobs', label: 'Job Queue', icon: ListChecks },
+  { to: '/reports/sales', label: 'Reports', icon: BarChart3, roles: ['admin', 'manager'] },
+  { to: '/transactions', label: 'Transactions', icon: Receipt },
+]
+
+const bottomNavLinkClassName = ({ isActive }: { isActive: boolean }) =>
+  cn('flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] text-muted-foreground', isActive && 'text-sidebar-primary font-medium')
+
 function SidebarNavContent({
   entries,
   openGroups,
@@ -289,6 +304,7 @@ function AppShellInner() {
   }, [profile?.tenantId])
 
   const visibleEntries = navEntries.filter((entry) => !entry.roles || (profile && entry.roles.includes(profile.role)))
+  const visibleBottomNav = bottomNavCandidates.filter((item) => !item.roles || (profile && item.roles.includes(profile.role))).slice(0, 4)
 
   return (
     <div className="flex h-screen flex-col print:h-auto">
@@ -342,10 +358,30 @@ function AppShellInner() {
           </div>
         </aside>
 
-        <main className="flex-1 overflow-y-auto p-4 print:overflow-visible print:p-0 lg:p-6">
+        <main className="flex-1 overflow-y-auto p-4 pb-20 print:overflow-visible print:p-0 lg:p-6 lg:pb-6">
           <Outlet />
         </main>
       </div>
+
+      {/* Tablet/phone only -- the sidebar's full menu collapses into the hamburger Sheet below lg,
+          so this gives quick one-tap access to the handful of screens used all day without having
+          to open that drawer every time. "More" reuses the same Sheet for everything else. */}
+      <nav className="fixed inset-x-0 bottom-0 z-30 flex h-16 items-stretch border-t bg-background lg:hidden print:hidden">
+        {visibleBottomNav.map((item) => (
+          <NavLink key={item.to} to={item.to} end={item.to === '/'} className={bottomNavLinkClassName}>
+            <item.icon className="size-5" />
+            {item.label}
+          </NavLink>
+        ))}
+        <button
+          type="button"
+          className="flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] text-muted-foreground"
+          onClick={() => setMobileNavOpen(true)}
+        >
+          <Menu className="size-5" />
+          More
+        </button>
+      </nav>
     </div>
   )
 }

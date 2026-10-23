@@ -281,7 +281,7 @@ export function RegisterPage() {
 
   return (
     <>
-    <div className="grid grid-cols-1 gap-6 pb-24 lg:grid-cols-[1fr_360px] lg:pb-0">
+    <div className="grid grid-cols-1 gap-6 pb-28 lg:grid-cols-[1fr_360px] lg:pb-0">
       <div className="flex flex-col gap-6">
         <div>
           <h1 className="text-2xl font-semibold">Register</h1>
@@ -522,8 +522,10 @@ export function RegisterPage() {
 
     {/* Tablet/phone only -- on the lg sidebar layout the Summary card above is already visible
         without scrolling, so this would just duplicate it. Below lg, the service list can run
-        long enough that the total + Create button would otherwise require scrolling back up. */}
-    <div className="fixed inset-x-0 bottom-0 z-40 flex items-center justify-between gap-3 border-t bg-background p-3 lg:hidden">
+        long enough that the total + Create button would otherwise require scrolling back up.
+        Sits just above AppShell's own bottom nav bar (h-16), not at bottom-0, so the two don't
+        overlap. */}
+    <div className="fixed inset-x-0 bottom-16 z-40 flex items-center justify-between gap-3 border-t bg-background p-3 lg:hidden">
       <div>
         <div className="text-xs text-muted-foreground">Estimated total</div>
         <div className="text-lg font-semibold">{formatMoney(estimatedTotal)}</div>
