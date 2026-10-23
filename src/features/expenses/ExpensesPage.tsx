@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { formatMoney } from '@/lib/money'
+import { localDateString } from '@/lib/date'
 import {
   listExpenseCategories,
   listExpenses,
@@ -29,11 +30,7 @@ const METHOD_LABELS: Record<string, string> = {
 function startOfMonth() {
   const d = new Date()
   d.setDate(1)
-  return d.toISOString().slice(0, 10)
-}
-
-function today() {
-  return new Date().toISOString().slice(0, 10)
+  return localDateString(d)
 }
 
 export function ExpensesPage() {
@@ -42,12 +39,12 @@ export function ExpensesPage() {
   const [loading, setLoading] = useState(true)
 
   const [from, setFrom] = useState(startOfMonth())
-  const [to, setTo] = useState(today())
+  const [to, setTo] = useState(localDateString())
 
   const [categoryId, setCategoryId] = useState('')
   const [description, setDescription] = useState('')
   const [amount, setAmount] = useState('')
-  const [expenseDate, setExpenseDate] = useState(today())
+  const [expenseDate, setExpenseDate] = useState(localDateString())
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'gcash' | 'maya' | 'bank_transfer' | 'card'>('cash')
   const [paidTo, setPaidTo] = useState('')
   const [submitting, setSubmitting] = useState(false)

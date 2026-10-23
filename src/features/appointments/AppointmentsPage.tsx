@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { localDateString } from '@/lib/date'
 import { listServices, listVehicleSizes, listLocations } from '@/features/catalog/api/catalogApi'
 import { listEmployees } from '@/features/employees/api/employeesApi'
 import { createCustomer, createVehicle, searchVehicles } from '@/features/vehicles/api/vehiclesApi'
@@ -35,15 +36,11 @@ const STATUS_LABELS: Record<string, string> = {
   no_show: 'No-show',
 }
 
-function today() {
-  return new Date().toISOString().slice(0, 10)
-}
-
 export function AppointmentsPage() {
   const { profile } = useTenant()
   const navigate = useNavigate()
 
-  const [date, setDate] = useState(today())
+  const [date, setDate] = useState(localDateString())
   const [appointments, setAppointments] = useState<AppointmentWithDetails[]>([])
   const [loading, setLoading] = useState(true)
   const [services, setServices] = useState<Service[]>([])

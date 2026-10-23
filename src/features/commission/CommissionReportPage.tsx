@@ -6,19 +6,14 @@ import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { formatMoney } from '@/lib/money'
+import { localDateString } from '@/lib/date'
 import { getCommissionReport } from './api/commissionReportApi'
 
 type Report = Awaited<ReturnType<typeof getCommissionReport>>
 
-function startOfToday() {
-  const d = new Date()
-  d.setHours(0, 0, 0, 0)
-  return d.toISOString().slice(0, 10)
-}
-
 export function CommissionReportPage() {
-  const [from, setFrom] = useState(startOfToday())
-  const [to, setTo] = useState(startOfToday())
+  const [from, setFrom] = useState(localDateString())
+  const [to, setTo] = useState(localDateString())
   const [report, setReport] = useState<Report | null>(null)
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())

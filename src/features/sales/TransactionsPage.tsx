@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { formatMoney } from '@/lib/money'
+import { localDateString } from '@/lib/date'
 import { getSettings, type Settings } from '@/features/settings/api/settingsApi'
 import { EditCrewDialog } from '@/features/jobs/EditCrewDialog'
 import { Receipt } from '@/features/jobs/Receipt'
@@ -17,17 +18,13 @@ import { getSaleDetail, listSales, listSalesByPlate, type SaleDetail, type SaleL
 function daysAgo(n: number) {
   const d = new Date()
   d.setDate(d.getDate() - n)
-  return d.toISOString().slice(0, 10)
-}
-
-function today() {
-  return new Date().toISOString().slice(0, 10)
+  return localDateString(d)
 }
 
 export function TransactionsPage() {
   const { profile } = useTenant()
   const [from, setFrom] = useState(daysAgo(7))
-  const [to, setTo] = useState(today())
+  const [to, setTo] = useState(localDateString())
   const [plateQuery, setPlateQuery] = useState('')
   const [activePlateQuery, setActivePlateQuery] = useState('')
   const [sales, setSales] = useState<SaleListRow[]>([])

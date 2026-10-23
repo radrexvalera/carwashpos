@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { formatMoney } from '@/lib/money'
+import { localDateString } from '@/lib/date'
 import { createPurchaseOrder, listInventoryUnits, listPurchaseOrders, listStockLevels, listSuppliers } from './api/inventoryApi'
 import type { InventoryStockLevel, PurchaseOrder, Supplier } from './api/inventoryApi'
 
@@ -86,7 +87,7 @@ export function PurchaseOrdersPage() {
       await createPurchaseOrder({
         supplierId,
         referenceNumber: referenceNumber.trim() || null,
-        orderDate: new Date().toISOString().slice(0, 10),
+        orderDate: localDateString(),
         deliveryCharge: Number(deliveryCharge) || 0,
         items: lines.map((l) => ({ itemId: l.itemId, quantity: Number(l.quantity), unitCost: Number(l.unitCost), discountAmount: 0 })),
       })

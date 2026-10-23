@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { formatMoney } from '@/lib/money'
+import { localDateString } from '@/lib/date'
 import { getSettings, type Settings } from '@/features/settings/api/settingsApi'
 import { listEmployees } from '@/features/employees/api/employeesApi'
 import { Payslip } from './Payslip'
@@ -42,9 +43,6 @@ import {
 type Entry = Awaited<ReturnType<typeof listPayrollEntries>>[number]
 type OutstandingAdvance = Awaited<ReturnType<typeof listOutstandingCashAdvances>>[number]
 
-function today() {
-  return new Date().toISOString().slice(0, 10)
-}
 
 export function PayrollPage() {
   const { profile } = useTenant()
@@ -55,8 +53,8 @@ export function PayrollPage() {
   const [loading, setLoading] = useState(true)
 
   const [periodType, setPeriodType] = useState('daily')
-  const [startDate, setStartDate] = useState(today())
-  const [endDate, setEndDate] = useState(today())
+  const [startDate, setStartDate] = useState(localDateString())
+  const [endDate, setEndDate] = useState(localDateString())
   const [generating, setGenerating] = useState(false)
 
   const [adjustmentDrafts, setAdjustmentDrafts] = useState<Record<string, { amount: string; reason: string }>>({})
@@ -65,7 +63,7 @@ export function PayrollPage() {
 
   const [employees, setEmployees] = useState<{ id: string; full_name: string }[]>([])
   const [outstandingAdvances, setOutstandingAdvances] = useState<OutstandingAdvance[]>([])
-  const [newAdvance, setNewAdvance] = useState({ employeeId: '', amount: '', date: today(), reason: '' })
+  const [newAdvance, setNewAdvance] = useState({ employeeId: '', amount: '', date: localDateString(), reason: '' })
   const [creatingAdvance, setCreatingAdvance] = useState(false)
 
   const [repaymentsByEntry, setRepaymentsByEntry] = useState<Record<string, CashAdvanceRepayment[]>>({})
@@ -191,7 +189,7 @@ export function PayrollPage() {
         advanceDate: newAdvance.date,
         reason: newAdvance.reason.trim() || null,
       })
-      setNewAdvance({ employeeId: '', amount: '', date: today(), reason: '' })
+      setNewAdvance({ employeeId: '', amount: '', date: localDateString(), reason: '' })
       await reloadOutstandingAdvances()
       toast.success('Cash advance recorded')
     } catch (err) {

@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase/client'
+import { localDateString } from '@/lib/date'
 import type { Database } from '@/lib/supabase/types'
 
 export type Promotion = Database['public']['Tables']['promotions']['Row']
@@ -94,7 +95,7 @@ export async function setPromotionActive(id: string, isActive: boolean) {
 export async function listActivePromotionsWithServices() {
   const { data, error } = await supabase.from('promotions').select('*').eq('is_active', true)
   if (error) throw error
-  const today = new Date().toISOString().slice(0, 10)
+  const today = localDateString()
   const active = (data ?? []).filter((p) => (!p.starts_at || p.starts_at <= today) && (!p.ends_at || p.ends_at >= today))
 
   if (active.length === 0) return []
