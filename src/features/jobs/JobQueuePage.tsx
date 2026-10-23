@@ -227,7 +227,7 @@ export function JobQueuePage() {
         <p className="text-muted-foreground">Live shop-floor status. Works offline.</p>
       </div>
 
-      <Tabs defaultValue="queue">
+      <Tabs defaultValue="queue" id="tour-job-queue">
         <TabsList>
           <TabsTrigger value="queue">Queue</TabsTrigger>
           <TabsTrigger value="bays">Bays</TabsTrigger>

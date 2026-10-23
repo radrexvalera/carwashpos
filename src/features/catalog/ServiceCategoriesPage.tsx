@@ -97,7 +97,7 @@ export function ServiceCategoriesPage() {
         </p>
       </div>
 
-      <Card>
+      <Card id="tour-add-category">
         <CardHeader>
           <CardTitle>Add a category</CardTitle>
         </CardHeader>

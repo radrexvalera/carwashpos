@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   BarChart3,
   CalendarClock,
   Car,
   ChevronDown,
   ChevronRight,
+  CircleHelp,
   Clock,
   DollarSign,
   FlaskConical,
@@ -44,8 +45,9 @@ import { useOfflineBootstrap } from '@/lib/offline/useOfflineBootstrap'
 import { useOnlineStatus } from '@/lib/offline/useOnlineStatus'
 import { SyncStatusBadge } from '@/lib/offline/SyncStatusBadge'
 import { useTheme } from '@/lib/theme/useTheme'
-import { getSettings, getTenantTrialStatus } from '@/features/settings/api/settingsApi'
+import { getSettings, getTenantTrialStatus, updateSettings } from '@/features/settings/api/settingsApi'
 import { listLocations } from '@/features/catalog/api/catalogApi'
+import { TourProvider, useTour } from '@/lib/tour/TourProvider'
 import { useAuth } from './AuthProvider'
 import { useTenant } from './TenantProvider'
 
@@ -220,9 +222,29 @@ function AvatarMenu({ onSignOut }: { onSignOut: () => void }) {
 }
 
 export function AppShell() {
+  const { profile } = useTenant()
+
+  async function markOnboardingSeen() {
+    if (!profile) return
+    try {
+      await updateSettings(profile.tenantId, { onboarding_completed_at: new Date().toISOString() })
+    } catch {
+      // Best-effort -- worst case the tour just auto-launches again next login, not harmful.
+    }
+  }
+
+  return (
+    <TourProvider onFinish={markOnboardingSeen}>
+      <AppShellInner />
+    </TourProvider>
+  )
+}
+
+function AppShellInner() {
   const { signOut } = useAuth()
   const { profile } = useTenant()
   const { pathname } = useLocation()
+  const { startTour } = useTour()
   useOfflineBootstrap(profile?.tenantId)
 
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
@@ -243,6 +265,7 @@ export function AppShell() {
   const [businessName, setBusinessName] = useState('')
   const [locationName, setLocationName] = useState('')
   const [trialExpired, setTrialExpired] = useState(false)
+  const autoTourChecked = useRef(false)
 
   useEffect(() => {
     if (!profile) return
@@ -251,6 +274,13 @@ export function AppShell() {
         setBusinessName(settings.business_name)
         setLocationName(locations[0]?.name ?? '')
         setTrialExpired(trial.expired)
+        // Auto-launch only once, the very first time a new tenant lands on the dashboard with no
+        // prior onboarding record -- not on every page, so it never interrupts someone already
+        // mid-task elsewhere in the app.
+        if (!autoTourChecked.current && !settings.onboarding_completed_at && pathname === '/') {
+          autoTourChecked.current = true
+          startTour()
+        }
       })
       .catch(() => {
         // Best-effort -- the breadcrumb is a nice-to-have, not worth surfacing an error toast for.
@@ -290,6 +320,9 @@ export function AppShell() {
         </div>
         <div className="flex items-center gap-3">
           <OnlineIndicator />
+          <Button variant="ghost" size="icon" aria-label="Take the setup tour" onClick={() => startTour()}>
+            <CircleHelp className="size-5" />
+          </Button>
           <ThemeToggle />
           <AvatarMenu onSignOut={() => signOut()} />
         </div>

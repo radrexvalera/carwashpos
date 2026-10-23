@@ -240,7 +240,7 @@ export function RegisterPage() {
           <p className="text-muted-foreground">Search a plate, pick services, assign crew, create the job. Works offline.</p>
         </div>
 
-        <Card>
+        <Card id="tour-register-vehicle">
           <CardHeader>
             <CardTitle>Vehicle</CardTitle>
           </CardHeader>

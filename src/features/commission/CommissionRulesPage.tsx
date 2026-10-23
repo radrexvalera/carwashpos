@@ -203,7 +203,7 @@ export function CommissionRulesPage() {
         </p>
       </div>
 
-      <Card>
+      <Card id="tour-commission-policy">
         <CardHeader>
           <CardTitle>Commission policy</CardTitle>
         </CardHeader>

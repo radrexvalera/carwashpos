@@ -94,7 +94,7 @@ export function BaysPage() {
         <p className="text-muted-foreground">Wash bays shown on the bay board (built in a later phase).</p>
       </div>
 
-      <Card>
+      <Card id="tour-add-bay">
         <CardHeader>
           <CardTitle>Add a bay</CardTitle>
         </CardHeader>

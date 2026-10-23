@@ -184,7 +184,7 @@ export function EmployeesPage() {
         </p>
       </div>
 
-      <Card>
+      <Card id="tour-add-employee">
         <CardHeader>
           <CardTitle>Add an employee</CardTitle>
         </CardHeader>

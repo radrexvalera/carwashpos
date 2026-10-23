@@ -157,6 +157,7 @@ export interface Database {
           loyalty_redemption_value: number
           carwash_commission_rate: number
           other_commission_rate: number
+          onboarding_completed_at: string | null
           updated_at: string
         }
         Insert: {
@@ -175,6 +176,7 @@ export interface Database {
           loyalty_redemption_value?: number
           carwash_commission_rate?: number
           other_commission_rate?: number
+          onboarding_completed_at?: string | null
           updated_at?: string
         }
         Update: Partial<Database['public']['Tables']['settings']['Insert']>

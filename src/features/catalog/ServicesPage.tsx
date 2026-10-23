@@ -79,7 +79,7 @@ export function ServicesPage() {
         </p>
       </div>
 
-      <Card>
+      <Card id="tour-add-service">
         <CardHeader>
           <CardTitle>Add a service</CardTitle>
         </CardHeader>

@@ -105,7 +105,7 @@ export function SettingsPage() {
         <p className="text-muted-foreground">Business info used on receipts and throughout the app.</p>
       </div>
 
-      <Card>
+      <Card id="tour-settings-business">
         <CardHeader>
           <CardTitle>Business info</CardTitle>
         </CardHeader>
