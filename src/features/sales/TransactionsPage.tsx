@@ -237,12 +237,6 @@ export function TransactionsPage() {
                       <span>−{formatMoney(detail.promotionDiscount)}</span>
                     </div>
                   )}
-                  {detail.loyaltyDiscount > 0 && (
-                    <div className="flex justify-between text-muted-foreground">
-                      <span>Points redeemed</span>
-                      <span>−{formatMoney(detail.loyaltyDiscount)}</span>
-                    </div>
-                  )}
                   {detail.membershipDiscount > 0 && (
                     <div className="flex justify-between text-muted-foreground">
                       <span>Free service (stamp card)</span>
@@ -296,7 +290,6 @@ export function TransactionsPage() {
                     items={detail.items}
                     subtotal={detail.subtotal}
                     promotionDiscount={detail.promotionDiscount}
-                    loyaltyDiscount={detail.loyaltyDiscount}
                     membershipDiscount={detail.membershipDiscount}
                     total={detail.total}
                     payments={detail.payments}

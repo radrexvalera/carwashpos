@@ -210,7 +210,6 @@ export function JobPaymentPage() {
               items={receiptItems}
               subtotal={preDiscountTotal}
               promotionDiscount={0}
-              loyaltyDiscount={0}
               membershipDiscount={0}
               total={result.total}
               payments={receiptPayments}

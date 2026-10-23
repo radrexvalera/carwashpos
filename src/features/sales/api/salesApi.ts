@@ -97,7 +97,6 @@ export interface SaleDetail {
   items: { name: string; quantity: number; unitPrice: number; lineTotal: number }[]
   subtotal: number
   promotionDiscount: number
-  loyaltyDiscount: number
   membershipDiscount: number
   total: number
   payments: { methodLabel: string; amount: number; tenderedAmount?: number; changeGiven?: number }[]
@@ -150,7 +149,6 @@ export async function getSaleDetail(saleId: string): Promise<SaleDetail> {
     })),
     subtotal: sale.subtotal,
     promotionDiscount: sale.promotion_discount_amount,
-    loyaltyDiscount: sale.loyalty_discount_amount,
     membershipDiscount: sale.membership_discount_amount,
     total: sale.total,
     payments: (paymentsRes.data ?? []).map((p) => ({

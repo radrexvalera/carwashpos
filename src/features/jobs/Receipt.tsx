@@ -26,7 +26,6 @@ interface ReceiptProps {
   items: ReceiptLineItem[]
   subtotal: number
   promotionDiscount: number
-  loyaltyDiscount: number
   membershipDiscount: number
   total: number
   payments: ReceiptPayment[]
@@ -58,7 +57,6 @@ export function Receipt({
   items,
   subtotal,
   promotionDiscount,
-  loyaltyDiscount,
   membershipDiscount,
   total,
   payments,
@@ -102,7 +100,6 @@ export function Receipt({
       <div className="flex flex-col gap-0.5">
         <Row label="SUBTOTAL" value={formatMoney(subtotal)} />
         {promotionDiscount > 0 && <Row label="Promotion discount" value={`-${formatMoney(promotionDiscount)}`} />}
-        {loyaltyDiscount > 0 && <Row label="Points redeemed" value={`-${formatMoney(loyaltyDiscount)}`} />}
         {membershipDiscount > 0 && <Row label="Free service" value={`-${formatMoney(membershipDiscount)}`} />}
         <Row label="TOTAL" value={formatMoney(total)} bold />
         {payments.map((p, i) => (
