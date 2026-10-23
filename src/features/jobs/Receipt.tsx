@@ -16,6 +16,7 @@ interface ReceiptPayment {
 
 interface ReceiptProps {
   businessName: string
+  logoUrl?: string | null
   receiptHeader?: string | null
   address?: string | null
   locationName: string
@@ -47,6 +48,7 @@ function Row({ label, value, bold }: { label: string; value: string; bold?: bool
 
 export function Receipt({
   businessName,
+  logoUrl,
   receiptHeader,
   address,
   locationName,
@@ -73,6 +75,7 @@ export function Receipt({
       <style>{`@page { size: ${paperWidth} auto; margin: 0; }`}</style>
 
       <div className="flex flex-col items-center gap-0.5 text-center">
+        {logoUrl && <img src={logoUrl} alt="" className="mb-1 max-h-12 max-w-[80%] object-contain" />}
         <div className="text-sm font-bold">{businessName}</div>
         {receiptHeader && <div>{receiptHeader}</div>}
         {address && <div>{address}</div>}

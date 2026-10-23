@@ -13,6 +13,7 @@ import { formatMoney } from '@/lib/money'
 import { localDateString } from '@/lib/date'
 import { getSettings, type Settings } from '@/features/settings/api/settingsApi'
 import { listEmployees } from '@/features/employees/api/employeesApi'
+import { getPayrollEntryJobBreakdown, type PayrollJobBreakdownRow } from '@/features/commission/api/commissionReportApi'
 import { Payslip } from './Payslip'
 import { PayslipPdfDocument } from './PayslipPdfDocument'
 import {
@@ -73,6 +74,8 @@ export function PayrollPage() {
   const [deductionsByEntry, setDeductionsByEntry] = useState<Record<string, PayrollDeduction[]>>({})
   const [deductionDrafts, setDeductionDrafts] = useState<Record<string, { amount: string; reason: string }>>({})
 
+  const [jobBreakdownByEntry, setJobBreakdownByEntry] = useState<Record<string, PayrollJobBreakdownRow[]>>({})
+
   async function reloadPeriods() {
     setPeriods(await listPayrollPeriods())
   }
@@ -102,6 +105,11 @@ export function PayrollPage() {
 
       const deductionPairs = await Promise.all(entryRows.map(async (e) => [e.id, await listPayrollDeductions(e.id)] as const))
       setDeductionsByEntry(Object.fromEntries(deductionPairs))
+
+      const breakdownPairs = await Promise.all(
+        entryRows.map(async (e) => [e.id, await getPayrollEntryJobBreakdown(period.id, e.employee_id)] as const),
+      )
+      setJobBreakdownByEntry(Object.fromEntries(breakdownPairs))
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to load payroll entries')
     } finally {
@@ -262,6 +270,7 @@ export function PayrollPage() {
       const blob = await pdf(
         <PayslipPdfDocument
           businessName={settings.business_name}
+          logoUrl={settings.logo_url}
           address={settings.address}
           employeeName={entry.employeeName}
           periodLabel={`${selected.start_date} - ${selected.end_date}`}
@@ -280,6 +289,15 @@ export function PayrollPage() {
           sssLoan={entry.sss_loan}
           hdmfLoan={entry.hdmf_loan}
           netPay={entry.net_pay}
+          commissionJobs={(jobBreakdownByEntry[entry.id] ?? []).map((j) => ({
+            jobNumber: j.jobNumber,
+            plateNumber: j.plateNumber,
+            date: new Date(j.date).toLocaleDateString(),
+            serviceName: j.serviceName,
+            rate: j.rate,
+            grossAmount: j.grossAmount,
+            commissionAmount: j.commissionAmount,
+          }))}
         />,
       ).toBlob()
       const url = URL.createObjectURL(blob)
@@ -534,6 +552,40 @@ export function PayrollPage() {
                   </Table>
 
                   <div className="flex flex-col gap-2 border-t pt-3">
+                    <div className="text-sm font-medium">Commission breakdown</div>
+                    {(jobBreakdownByEntry[entry.id] ?? []).length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No commission jobs in this period.</p>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Job #</TableHead>
+                            <TableHead>Plate</TableHead>
+                            <TableHead>Date</TableHead>
+                            <TableHead>Service</TableHead>
+                            <TableHead>Rate</TableHead>
+                            <TableHead className="text-right">Job total</TableHead>
+                            <TableHead className="text-right">Commission</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {(jobBreakdownByEntry[entry.id] ?? []).map((j, i) => (
+                            <TableRow key={`${j.jobId}-${i}`}>
+                              <TableCell>{j.jobNumber}</TableCell>
+                              <TableCell>{j.plateNumber ?? '—'}</TableCell>
+                              <TableCell>{new Date(j.date).toLocaleDateString()}</TableCell>
+                              <TableCell>{j.serviceName ?? 'Whole job'}</TableCell>
+                              <TableCell>{j.rate}%</TableCell>
+                              <TableCell className="text-right">{formatMoney(j.grossAmount)}</TableCell>
+                              <TableCell className="text-right">{formatMoney(j.commissionAmount)}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col gap-2 border-t pt-3">
                     <div className="text-sm font-medium">Cash advance deductions</div>
                     {(repaymentsByEntry[entry.id] ?? []).map((r) => (
                       <div key={r.id} className="flex items-center justify-between text-sm text-muted-foreground">
@@ -695,6 +747,7 @@ export function PayrollPage() {
           <div key={entry.id} className={printingEntryId === entry.id ? 'hidden print:block' : 'hidden'}>
             <Payslip
               businessName={settings.business_name}
+              logoUrl={settings.logo_url}
               address={settings.address}
               paperWidth={(settings.receipt_paper_width as '58mm' | '80mm') || '58mm'}
               employeeName={entry.employeeName}

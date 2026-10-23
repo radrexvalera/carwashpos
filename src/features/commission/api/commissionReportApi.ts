@@ -9,6 +9,89 @@ export interface CommissionRateJob {
   commissionAmount: number
 }
 
+export interface PayrollJobBreakdownRow {
+  jobId: string
+  jobNumber: string
+  plateNumber: string | null
+  date: string
+  serviceName: string | null
+  rate: number
+  grossAmount: number
+  commissionAmount: number
+}
+
+// Per-employee, per-payroll-period job breakdown -- commission_ledger rows get stamped with
+// payroll_period_id once claimed (generate_payroll_period()/recompute_job_commission()), so this
+// is just those rows netted per line item, same (job_service_id ?? job_id, rate) netting key as
+// the Commission Report above, for the same reason: a reversal + its correction share a
+// payroll_period_id and can share a created_at, so summing nets a superseded line to ~0 instead of
+// guessing which row is "current".
+export async function getPayrollEntryJobBreakdown(payrollPeriodId: string, employeeId: string): Promise<PayrollJobBreakdownRow[]> {
+  const { data: entries, error } = await supabase
+    .from('commission_ledger')
+    .select('*')
+    .eq('payroll_period_id', payrollPeriodId)
+    .eq('employee_id', employeeId)
+  if (error) throw error
+
+  const jobIds = [...new Set((entries ?? []).map((e) => e.job_id))]
+  const serviceIds = [...new Set((entries ?? []).map((e) => e.service_id).filter((id): id is string => !!id))]
+
+  const [{ data: jobs }, { data: services }] = await Promise.all([
+    jobIds.length ? supabase.from('jobs').select('id, job_number, vehicle_id').in('id', jobIds) : Promise.resolve({ data: [] }),
+    serviceIds.length ? supabase.from('services').select('id, name').in('id', serviceIds) : Promise.resolve({ data: [] }),
+  ])
+
+  const vehicleIds = [...new Set((jobs ?? []).map((j) => j.vehicle_id))]
+  const { data: vehicles } = vehicleIds.length
+    ? await supabase.from('vehicles').select('id, plate_number').in('id', vehicleIds)
+    : { data: [] }
+
+  const jobNumberById = new Map((jobs ?? []).map((j) => [j.id, j.job_number]))
+  const vehicleIdByJobId = new Map((jobs ?? []).map((j) => [j.id, j.vehicle_id]))
+  const plateByVehicleId = new Map((vehicles ?? []).map((v) => [v.id, v.plate_number]))
+  const serviceNameById = new Map((services ?? []).map((s) => [s.id, s.name]))
+
+  const byKey = new Map<
+    string,
+    { jobId: string; serviceId: string | null; rate: number; netAmount: number; grossAmount: number; lastCreatedAt: string }
+  >()
+  for (const entry of entries ?? []) {
+    const key = `${entry.job_service_id ?? entry.job_id}:${entry.commission_rate}`
+    const existing = byKey.get(key)
+    if (!existing) {
+      byKey.set(key, {
+        jobId: entry.job_id,
+        serviceId: entry.service_id,
+        rate: entry.commission_rate,
+        netAmount: entry.commission_amount,
+        grossAmount: entry.gross_service_amount,
+        lastCreatedAt: entry.created_at,
+      })
+    } else {
+      existing.netAmount += entry.commission_amount
+      if (entry.created_at > existing.lastCreatedAt) existing.lastCreatedAt = entry.created_at
+    }
+  }
+
+  const rows: PayrollJobBreakdownRow[] = []
+  for (const row of byKey.values()) {
+    if (Math.abs(row.netAmount) < 0.005) continue
+    rows.push({
+      jobId: row.jobId,
+      jobNumber: jobNumberById.get(row.jobId) ?? row.jobId.slice(0, 8),
+      plateNumber: plateByVehicleId.get(vehicleIdByJobId.get(row.jobId) ?? '') ?? null,
+      date: row.lastCreatedAt,
+      serviceName: row.serviceId ? serviceNameById.get(row.serviceId) ?? 'Unknown service' : null,
+      rate: row.rate,
+      grossAmount: row.grossAmount,
+      commissionAmount: row.netAmount,
+    })
+  }
+  rows.sort((a, b) => b.date.localeCompare(a.date))
+  return rows
+}
+
 export async function getCommissionReport(from: string, to: string) {
   // No status filter -- a reversal row (negative commission_amount) must be summed in, not
   // excluded, or its original mistaken entry stays fully counted with nothing left to cancel it

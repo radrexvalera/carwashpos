@@ -2,6 +2,7 @@ import { formatMoney } from '@/lib/money'
 
 interface PayslipProps {
   businessName: string
+  logoUrl?: string | null
   address?: string | null
   paperWidth: '58mm' | '80mm'
   employeeName: string
@@ -32,6 +33,7 @@ function Row({ label, value, bold }: { label: string; value: string; bold?: bool
 
 export function Payslip({
   businessName,
+  logoUrl,
   address,
   paperWidth,
   employeeName,
@@ -59,6 +61,7 @@ export function Payslip({
       <style>{`@page { size: ${paperWidth} auto; margin: 0; }`}</style>
 
       <div className="flex flex-col items-center gap-0.5 text-center">
+        {logoUrl && <img src={logoUrl} alt="" className="mb-1 max-h-12 max-w-[80%] object-contain" />}
         <div className="text-sm font-bold">{businessName}</div>
         {address && <div>{address}</div>}
         <div className="font-bold">PAYSLIP</div>

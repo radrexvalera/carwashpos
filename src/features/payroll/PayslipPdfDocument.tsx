@@ -1,8 +1,19 @@
-import { Document, Page, StyleSheet, Text, View } from '@react-pdf/renderer'
+import { Document, Image, Page, StyleSheet, Text, View } from '@react-pdf/renderer'
 import { formatMoney } from '@/lib/money'
+
+export interface PayslipPdfJobRow {
+  jobNumber: string
+  plateNumber: string | null
+  date: string
+  serviceName: string | null
+  rate: number
+  grossAmount: number
+  commissionAmount: number
+}
 
 export interface PayslipPdfData {
   businessName: string
+  logoUrl?: string | null
   address: string | null
   employeeName: string
   periodLabel: string
@@ -21,6 +32,7 @@ export interface PayslipPdfData {
   sssLoan: number
   hdmfLoan: number
   netPay: number
+  commissionJobs?: PayslipPdfJobRow[]
 }
 
 const styles = StyleSheet.create({
@@ -40,6 +52,24 @@ const styles = StyleSheet.create({
   underlineBottom: { borderBottomWidth: 1, borderBottomColor: '#000' },
   netPayBox: { borderTopWidth: 1, borderBottomWidth: 3, borderBottomColor: '#000', borderTopColor: '#000' },
   spacer: { height: 14 },
+  breakdownTitle: { fontSize: 11, fontWeight: 'bold', textAlign: 'center', marginBottom: 14 },
+  tableHeaderRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: '#000',
+    paddingBottom: 4,
+    fontWeight: 'bold',
+  },
+  tableRow: { flexDirection: 'row', paddingVertical: 4, borderBottomWidth: 0.5, borderBottomColor: '#ccc' },
+  colJob: { width: '16%' },
+  colPlate: { width: '14%' },
+  colDate: { width: '14%' },
+  colService: { width: '26%' },
+  colRate: { width: '10%', textAlign: 'right' },
+  colGross: { width: '10%', textAlign: 'right' },
+  colCommission: { width: '10%', textAlign: 'right' },
+  totalRow: { flexDirection: 'row', paddingTop: 6, borderTopWidth: 1, borderTopColor: '#000', marginTop: 4 },
+  logo: { height: 40, maxWidth: 160, objectFit: 'contain', alignSelf: 'center', marginBottom: 6 },
 })
 
 function dashOr(value: number) {
@@ -62,6 +92,7 @@ export function PayslipPdfDocument(d: PayslipPdfData) {
     <Document>
       <Page size="A4" style={styles.page}>
         <View style={styles.border}>
+          {d.logoUrl && <Image style={styles.logo} src={d.logoUrl} />}
           <Text style={styles.businessName}>{d.businessName}</Text>
           {d.address && <Text style={styles.addressLine}>{d.address}</Text>}
           <Text style={styles.title}>PAYSLIP</Text>
@@ -161,6 +192,51 @@ export function PayslipPdfDocument(d: PayslipPdfData) {
           </View>
         </View>
       </Page>
+
+      {d.commissionJobs && d.commissionJobs.length > 0 && (
+        <Page size="A4" style={styles.page}>
+          <View style={styles.border}>
+            {d.logoUrl && <Image style={styles.logo} src={d.logoUrl} />}
+            <Text style={styles.businessName}>{d.businessName}</Text>
+            {d.address && <Text style={styles.addressLine}>{d.address}</Text>}
+            <Text style={styles.breakdownTitle}>
+              COMMISSION BREAKDOWN — {d.employeeName.toUpperCase()} ({d.periodLabel})
+            </Text>
+
+            <View style={styles.tableHeaderRow}>
+              <Text style={styles.colJob}>Job #</Text>
+              <Text style={styles.colPlate}>Plate</Text>
+              <Text style={styles.colDate}>Date</Text>
+              <Text style={styles.colService}>Service</Text>
+              <Text style={styles.colRate}>Rate</Text>
+              <Text style={styles.colGross}>Job total</Text>
+              <Text style={styles.colCommission}>Commission</Text>
+            </View>
+            {d.commissionJobs.map((job, i) => (
+              <View key={i} style={styles.tableRow}>
+                <Text style={styles.colJob}>{job.jobNumber}</Text>
+                <Text style={styles.colPlate}>{job.plateNumber ?? '-'}</Text>
+                <Text style={styles.colDate}>{job.date}</Text>
+                <Text style={styles.colService}>{job.serviceName ?? 'Whole job'}</Text>
+                <Text style={styles.colRate}>{job.rate}%</Text>
+                <Text style={styles.colGross}>{formatMoney(job.grossAmount)}</Text>
+                <Text style={styles.colCommission}>{formatMoney(job.commissionAmount)}</Text>
+              </View>
+            ))}
+            <View style={styles.totalRow}>
+              <Text style={[styles.colJob, styles.bold]}>Total</Text>
+              <Text style={styles.colPlate} />
+              <Text style={styles.colDate} />
+              <Text style={styles.colService} />
+              <Text style={styles.colRate} />
+              <Text style={styles.colGross} />
+              <Text style={[styles.colCommission, styles.bold]}>
+                {formatMoney(d.commissionJobs.reduce((sum, j) => sum + j.commissionAmount, 0))}
+              </Text>
+            </View>
+          </View>
+        </Page>
+      )}
     </Document>
   )
 }

@@ -206,6 +206,7 @@ export function JobPaymentPage() {
           <div className="hidden print:block">
             <Receipt
               businessName={settings.business_name}
+              logoUrl={settings.logo_url}
               receiptHeader={settings.receipt_header}
               address={settings.address}
               locationName={locationName}

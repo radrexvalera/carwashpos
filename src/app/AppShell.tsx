@@ -279,6 +279,7 @@ function AppShellInner() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [businessName, setBusinessName] = useState('')
   const [locationName, setLocationName] = useState('')
+  const [logoUrl, setLogoUrl] = useState<string | null>(null)
   const [trialExpired, setTrialExpired] = useState(false)
   const autoTourChecked = useRef(false)
 
@@ -288,6 +289,7 @@ function AppShellInner() {
       .then(([settings, locations, trial]) => {
         setBusinessName(settings.business_name)
         setLocationName(locations[0]?.name ?? '')
+        setLogoUrl(settings.logo_url)
         setTrialExpired(trial.expired)
         // Auto-launch only once, the very first time a new tenant lands on the dashboard with no
         // prior onboarding record -- not on every page, so it never interrupts someone already
@@ -316,7 +318,10 @@ function AppShellInner() {
             </Button>
             <SheetContent side="left" className="flex w-72 flex-col gap-0 p-0">
               <SheetHeader className="border-b">
-                <SheetTitle>{businessName || 'Car Wash POS'}</SheetTitle>
+                <SheetTitle className="flex items-center gap-2">
+                  {logoUrl && <img src={logoUrl} alt="" className="h-6 w-6 shrink-0 rounded object-contain" />}
+                  {businessName || 'Car Wash POS'}
+                </SheetTitle>
               </SheetHeader>
               <SidebarNavContent
                 entries={visibleEntries}
@@ -329,6 +334,7 @@ function AppShellInner() {
               </div>
             </SheetContent>
           </Sheet>
+          {logoUrl && <img src={logoUrl} alt="" className="h-8 w-8 shrink-0 rounded object-contain" />}
           <span className="font-semibold">
             {businessName || 'Car Wash POS'}
             {locationName && <span className="font-normal text-muted-foreground"> / {locationName}</span>}
