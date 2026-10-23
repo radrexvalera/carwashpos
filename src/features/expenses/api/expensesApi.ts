@@ -44,7 +44,7 @@ export interface RecordExpenseInput {
   description: string
   amount: number
   expenseDate: string
-  paymentMethod: 'cash' | 'gcash' | 'maya' | 'bank_transfer' | 'card'
+  paymentMethod: 'cash' | 'gcash' | 'maya' | 'bank_transfer' | 'card' | 'maribank' | 'gotyme' | 'rcbc' | 'bpi' | 'unionbank' | 'qrph'
   paidTo?: string
   referenceNote?: string
 }

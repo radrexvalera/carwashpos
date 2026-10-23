@@ -523,7 +523,7 @@ export interface Database {
           description: string
           amount: number
           expense_date: string
-          payment_method: 'cash' | 'gcash' | 'maya' | 'bank_transfer' | 'card'
+          payment_method: 'cash' | 'gcash' | 'maya' | 'bank_transfer' | 'card' | 'maribank' | 'gotyme' | 'rcbc' | 'bpi' | 'unionbank' | 'qrph'
           paid_to: string | null
           reference_note: string | null
           is_voided: boolean
@@ -887,7 +887,7 @@ export interface Database {
           id: string
           tenant_id: string
           sale_id: string
-          method: 'cash' | 'gcash' | 'maya' | 'bank_transfer' | 'card'
+          method: 'cash' | 'gcash' | 'maya' | 'bank_transfer' | 'card' | 'maribank' | 'gotyme' | 'rcbc' | 'bpi' | 'unionbank' | 'qrph'
           amount: number
           reference_note: string | null
           tendered_amount: number | null

@@ -30,6 +30,12 @@ const METHOD_LABELS: Record<string, string> = {
   maya: 'Maya',
   bank_transfer: 'Bank Transfer',
   card: 'Card',
+  maribank: 'Maribank',
+  gotyme: 'GoTyme',
+  rcbc: 'RCBC',
+  bpi: 'BPI',
+  unionbank: 'UnionBank',
+  qrph: 'QR Ph',
 }
 
 export function FleetAccountsPage() {

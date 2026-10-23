@@ -16,7 +16,7 @@ import { Receipt } from './Receipt'
 import type { InventoryStockLevel } from '@/features/inventory/api/inventoryApi'
 
 type JobService = { id: string; service_id: string; unit_price: number; quantity: number; line_total: number; serviceName: string }
-type PaymentMethod = 'cash' | 'gcash' | 'maya' | 'bank_transfer' | 'card'
+type PaymentMethod = 'cash' | 'gcash' | 'maya' | 'bank_transfer' | 'card' | 'maribank' | 'gotyme' | 'rcbc' | 'bpi' | 'unionbank' | 'qrph'
 type ProductLine = { itemId: string; name: string; unitPrice: number; quantity: number }
 
 const METHOD_LABELS: Record<PaymentMethod, string> = {
@@ -25,6 +25,12 @@ const METHOD_LABELS: Record<PaymentMethod, string> = {
   maya: 'Maya',
   bank_transfer: 'Bank Transfer',
   card: 'Card',
+  maribank: 'Maribank',
+  gotyme: 'GoTyme',
+  rcbc: 'RCBC',
+  bpi: 'BPI',
+  unionbank: 'UnionBank',
+  qrph: 'QR Ph',
 }
 
 export function JobPaymentPage() {

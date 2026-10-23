@@ -25,6 +25,12 @@ const METHOD_LABELS: Record<string, string> = {
   maya: 'Maya',
   bank_transfer: 'Bank Transfer',
   card: 'Card',
+  maribank: 'Maribank',
+  gotyme: 'GoTyme',
+  rcbc: 'RCBC',
+  bpi: 'BPI',
+  unionbank: 'UnionBank',
+  qrph: 'QR Ph',
 }
 
 function startOfMonth() {
@@ -45,8 +51,11 @@ export function ExpensesPage() {
   const [description, setDescription] = useState('')
   const [amount, setAmount] = useState('')
   const [expenseDate, setExpenseDate] = useState(localDateString())
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'gcash' | 'maya' | 'bank_transfer' | 'card'>('cash')
+  const [paymentMethod, setPaymentMethod] = useState<
+    'cash' | 'gcash' | 'maya' | 'bank_transfer' | 'card' | 'maribank' | 'gotyme' | 'rcbc' | 'bpi' | 'unionbank' | 'qrph'
+  >('cash')
   const [paidTo, setPaidTo] = useState('')
+  const [referenceNote, setReferenceNote] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
   const [voidTarget, setVoidTarget] = useState<Expense | null>(null)
@@ -86,10 +95,12 @@ export function ExpensesPage() {
         expenseDate,
         paymentMethod,
         paidTo: paidTo.trim() || undefined,
+        referenceNote: referenceNote.trim() || undefined,
       })
       setDescription('')
       setAmount('')
       setPaidTo('')
+      setReferenceNote('')
       toast.success('Expense recorded')
       await reload()
     } catch (err) {
@@ -170,6 +181,15 @@ export function ExpensesPage() {
             <Label>Paid to</Label>
             <Input className="w-40" value={paidTo} onChange={(e) => setPaidTo(e.target.value)} placeholder="Optional" />
           </div>
+          <div className="flex flex-col gap-1.5">
+            <Label>Reference number</Label>
+            <Input
+              className="w-40"
+              value={referenceNote}
+              onChange={(e) => setReferenceNote(e.target.value)}
+              placeholder="Optional"
+            />
+          </div>
           <Button disabled={submitting || !categoryId || !description.trim() || !amount} onClick={handleSubmit}>
             Record
           </Button>
@@ -199,6 +219,7 @@ export function ExpensesPage() {
                 <TableHead>Category</TableHead>
                 <TableHead>Description</TableHead>
                 <TableHead>Paid to</TableHead>
+                <TableHead>Reference</TableHead>
                 <TableHead>Method</TableHead>
                 <TableHead className="text-right">Amount</TableHead>
                 <TableHead />
@@ -218,6 +239,7 @@ export function ExpensesPage() {
                     )}
                   </TableCell>
                   <TableCell>{row.paid_to ?? '—'}</TableCell>
+                  <TableCell>{row.reference_note ?? '—'}</TableCell>
                   <TableCell>{METHOD_LABELS[row.payment_method]}</TableCell>
                   <TableCell className="text-right">{formatMoney(row.amount)}</TableCell>
                   <TableCell>
@@ -253,7 +275,7 @@ export function ExpensesPage() {
               ))}
               {!loading && expenses.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground">
+                  <TableCell colSpan={8} className="text-center text-muted-foreground">
                     No expenses in this period.
                   </TableCell>
                 </TableRow>
