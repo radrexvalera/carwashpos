@@ -7,6 +7,7 @@ import { useTenant } from '@/app/TenantProvider'
 import { db } from '@/lib/db/dexie'
 import { formatMoney } from '@/lib/money'
 import { useOnlineStatus } from '@/lib/offline/useOnlineStatus'
+import { safeGetItem, safeSetItem } from '@/lib/safeStorage'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -76,7 +77,7 @@ export function RegisterPage() {
   useEffect(() => {
     if (!profile) return
     if (!online) {
-      setHasOpenShift(shiftCacheKey ? localStorage.getItem(shiftCacheKey) === 'true' : false)
+      setHasOpenShift(shiftCacheKey ? safeGetItem(shiftCacheKey) === 'true' : false)
       setShiftCheckDone(true)
       return
     }
@@ -84,13 +85,13 @@ export function RegisterPage() {
       .then((shift) => {
         const open = !!shift
         setHasOpenShift(open)
-        if (shiftCacheKey) localStorage.setItem(shiftCacheKey, open ? 'true' : 'false')
+        if (shiftCacheKey) safeSetItem(shiftCacheKey, open ? 'true' : 'false')
       })
       .catch(() => {
         // Couldn't verify (e.g. a request that failed despite navigator.onLine saying we're
         // online) -- fall back to the last confirmed state rather than hard-blocking on a check
         // that itself didn't succeed.
-        setHasOpenShift(shiftCacheKey ? localStorage.getItem(shiftCacheKey) === 'true' : false)
+        setHasOpenShift(shiftCacheKey ? safeGetItem(shiftCacheKey) === 'true' : false)
       })
       .finally(() => setShiftCheckDone(true))
     // eslint-disable-next-line react-hooks/exhaustive-deps
