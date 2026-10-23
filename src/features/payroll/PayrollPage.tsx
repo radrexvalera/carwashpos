@@ -360,10 +360,13 @@ export function PayrollPage() {
           commissionJobs={(jobBreakdownByEntry[entry.id] ?? []).map((j) => ({
             jobNumber: j.jobNumber,
             plateNumber: j.plateNumber,
+            vehicleSizeName: j.vehicleSizeName,
             date: new Date(j.date).toLocaleDateString(),
             serviceName: j.serviceName,
+            jobServiceNames: j.jobServiceNames,
             rate: j.rate,
             grossAmount: j.grossAmount,
+            discountAmount: j.discountAmount,
             commissionAmount: j.commissionAmount,
           }))}
         />,
@@ -640,10 +643,13 @@ export function PayrollPage() {
                           <TableRow>
                             <TableHead>Job #</TableHead>
                             <TableHead>Plate</TableHead>
+                            <TableHead>Size</TableHead>
                             <TableHead>Date</TableHead>
                             <TableHead>Service</TableHead>
+                            <TableHead>Services on job</TableHead>
                             <TableHead>Rate</TableHead>
                             <TableHead className="text-right">Job total</TableHead>
+                            <TableHead className="text-right">Discount</TableHead>
                             <TableHead className="text-right">Commission</TableHead>
                           </TableRow>
                         </TableHeader>
@@ -652,10 +658,13 @@ export function PayrollPage() {
                             <TableRow key={`${j.jobId}-${i}`}>
                               <TableCell>{j.jobNumber}</TableCell>
                               <TableCell>{j.plateNumber ?? '—'}</TableCell>
+                              <TableCell>{j.vehicleSizeName ?? '—'}</TableCell>
                               <TableCell>{new Date(j.date).toLocaleDateString()}</TableCell>
                               <TableCell>{j.serviceName ?? 'Whole job'}</TableCell>
+                              <TableCell>{j.jobServiceNames || '—'}</TableCell>
                               <TableCell>{j.rate}%</TableCell>
                               <TableCell className="text-right">{formatMoney(j.grossAmount)}</TableCell>
+                              <TableCell className="text-right">{j.discountAmount > 0 ? formatMoney(j.discountAmount) : '—'}</TableCell>
                               <TableCell className="text-right">{formatMoney(j.commissionAmount)}</TableCell>
                             </TableRow>
                           ))}

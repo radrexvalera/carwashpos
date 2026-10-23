@@ -15,8 +15,11 @@ export interface PayrollJobBreakdownRow {
   plateNumber: string | null
   date: string
   serviceName: string | null
+  vehicleSizeName: string | null
+  jobServiceNames: string
   rate: number
   grossAmount: number
+  discountAmount: number
   commissionAmount: number
 }
 
@@ -37,24 +40,62 @@ export async function getPayrollEntryJobBreakdown(payrollPeriodId: string, emplo
   const jobIds = [...new Set((entries ?? []).map((e) => e.job_id))]
   const serviceIds = [...new Set((entries ?? []).map((e) => e.service_id).filter((id): id is string => !!id))]
 
-  const [{ data: jobs }, { data: services }] = await Promise.all([
-    jobIds.length ? supabase.from('jobs').select('id, job_number, vehicle_id').in('id', jobIds) : Promise.resolve({ data: [] }),
+  const [{ data: jobs }, { data: services }, { data: jobServices }] = await Promise.all([
+    jobIds.length
+      ? supabase.from('jobs').select('id, job_number, vehicle_id, vehicle_size_id').in('id', jobIds)
+      : Promise.resolve({ data: [] }),
     serviceIds.length ? supabase.from('services').select('id, name').in('id', serviceIds) : Promise.resolve({ data: [] }),
+    // Full service list per job -- not just the one line this particular commission entry is for --
+    // so the payslip breakdown can show everything that was done on that job, for context. Also
+    // carries discount_amount so the breakdown can show how much was discounted off that job.
+    jobIds.length
+      ? supabase.from('job_services').select('id, job_id, service_id, discount_amount').in('job_id', jobIds)
+      : Promise.resolve({ data: [] }),
   ])
 
   const vehicleIds = [...new Set((jobs ?? []).map((j) => j.vehicle_id))]
-  const { data: vehicles } = vehicleIds.length
-    ? await supabase.from('vehicles').select('id, plate_number').in('id', vehicleIds)
-    : { data: [] }
+  const vehicleSizeIds = [...new Set((jobs ?? []).map((j) => j.vehicle_size_id).filter((id): id is string => !!id))]
+  const allServiceIds = [...new Set((jobServices ?? []).map((js) => js.service_id))]
+
+  const [{ data: vehicles }, { data: vehicleSizes }, { data: allServices }] = await Promise.all([
+    vehicleIds.length ? supabase.from('vehicles').select('id, plate_number').in('id', vehicleIds) : Promise.resolve({ data: [] }),
+    vehicleSizeIds.length
+      ? supabase.from('vehicle_sizes').select('id, name').in('id', vehicleSizeIds)
+      : Promise.resolve({ data: [] }),
+    allServiceIds.length ? supabase.from('services').select('id, name').in('id', allServiceIds) : Promise.resolve({ data: [] }),
+  ])
 
   const jobNumberById = new Map((jobs ?? []).map((j) => [j.id, j.job_number]))
   const vehicleIdByJobId = new Map((jobs ?? []).map((j) => [j.id, j.vehicle_id]))
+  const vehicleSizeIdByJobId = new Map((jobs ?? []).map((j) => [j.id, j.vehicle_size_id]))
   const plateByVehicleId = new Map((vehicles ?? []).map((v) => [v.id, v.plate_number]))
+  const vehicleSizeNameById = new Map((vehicleSizes ?? []).map((s) => [s.id, s.name]))
   const serviceNameById = new Map((services ?? []).map((s) => [s.id, s.name]))
+  const allServiceNameById = new Map((allServices ?? []).map((s) => [s.id, s.name]))
+
+  const serviceNamesByJobId = new Map<string, string[]>()
+  const discountByJobId = new Map<string, number>()
+  const discountByJobServiceId = new Map<string, number>()
+  for (const js of jobServices ?? []) {
+    const name = allServiceNameById.get(js.service_id) ?? 'Unknown service'
+    const list = serviceNamesByJobId.get(js.job_id) ?? []
+    list.push(name)
+    serviceNamesByJobId.set(js.job_id, list)
+    discountByJobId.set(js.job_id, (discountByJobId.get(js.job_id) ?? 0) + js.discount_amount)
+    discountByJobServiceId.set(js.id, js.discount_amount)
+  }
 
   const byKey = new Map<
     string,
-    { jobId: string; serviceId: string | null; rate: number; netAmount: number; grossAmount: number; lastCreatedAt: string }
+    {
+      jobId: string
+      jobServiceId: string | null
+      serviceId: string | null
+      rate: number
+      netAmount: number
+      grossAmount: number
+      lastCreatedAt: string
+    }
   >()
   for (const entry of entries ?? []) {
     const key = `${entry.job_service_id ?? entry.job_id}:${entry.commission_rate}`
@@ -62,6 +103,7 @@ export async function getPayrollEntryJobBreakdown(payrollPeriodId: string, emplo
     if (!existing) {
       byKey.set(key, {
         jobId: entry.job_id,
+        jobServiceId: entry.job_service_id,
         serviceId: entry.service_id,
         rate: entry.commission_rate,
         netAmount: entry.commission_amount,
@@ -77,14 +119,22 @@ export async function getPayrollEntryJobBreakdown(payrollPeriodId: string, emplo
   const rows: PayrollJobBreakdownRow[] = []
   for (const row of byKey.values()) {
     if (Math.abs(row.netAmount) < 0.005) continue
+    // Job-level row (whole job) -- sum every line's discount on that job. Service-level row --
+    // just that one line's discount, not the whole job's.
+    const discountAmount = row.jobServiceId
+      ? (discountByJobServiceId.get(row.jobServiceId) ?? 0)
+      : (discountByJobId.get(row.jobId) ?? 0)
     rows.push({
       jobId: row.jobId,
       jobNumber: jobNumberById.get(row.jobId) ?? row.jobId.slice(0, 8),
       plateNumber: plateByVehicleId.get(vehicleIdByJobId.get(row.jobId) ?? '') ?? null,
       date: row.lastCreatedAt,
       serviceName: row.serviceId ? serviceNameById.get(row.serviceId) ?? 'Unknown service' : null,
+      vehicleSizeName: vehicleSizeNameById.get(vehicleSizeIdByJobId.get(row.jobId) ?? '') ?? null,
+      jobServiceNames: (serviceNamesByJobId.get(row.jobId) ?? []).join(', '),
       rate: row.rate,
       grossAmount: row.grossAmount,
+      discountAmount,
       commissionAmount: row.netAmount,
     })
   }

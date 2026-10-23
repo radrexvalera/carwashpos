@@ -4,10 +4,13 @@ import { formatMoney } from '@/lib/money'
 export interface PayslipPdfJobRow {
   jobNumber: string
   plateNumber: string | null
+  vehicleSizeName?: string | null
   date: string
   serviceName: string | null
+  jobServiceNames?: string
   rate: number
   grossAmount: number
+  discountAmount?: number
   commissionAmount: number
 }
 
@@ -61,13 +64,16 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   tableRow: { flexDirection: 'row', paddingVertical: 4, borderBottomWidth: 0.5, borderBottomColor: '#ccc' },
-  colJob: { width: '16%' },
-  colPlate: { width: '14%' },
-  colDate: { width: '14%' },
-  colService: { width: '26%' },
-  colRate: { width: '10%', textAlign: 'right' },
-  colGross: { width: '10%', textAlign: 'right' },
-  colCommission: { width: '10%', textAlign: 'right' },
+  colJob: { width: '9%' },
+  colPlate: { width: '8%' },
+  colSize: { width: '7%' },
+  colDate: { width: '8%' },
+  colService: { width: '13%' },
+  colServicesOnJob: { width: '21%' },
+  colRate: { width: '7%', textAlign: 'right' },
+  colGross: { width: '9%', textAlign: 'right' },
+  colDiscount: { width: '9%', textAlign: 'right' },
+  colCommission: { width: '9%', textAlign: 'right' },
   totalRow: { flexDirection: 'row', paddingTop: 6, borderTopWidth: 1, borderTopColor: '#000', marginTop: 4 },
   logo: { height: 40, maxWidth: 160, objectFit: 'contain', alignSelf: 'center', marginBottom: 6 },
 })
@@ -206,30 +212,39 @@ export function PayslipPdfDocument(d: PayslipPdfData) {
             <View style={styles.tableHeaderRow}>
               <Text style={styles.colJob}>Job #</Text>
               <Text style={styles.colPlate}>Plate</Text>
+              <Text style={styles.colSize}>Size</Text>
               <Text style={styles.colDate}>Date</Text>
               <Text style={styles.colService}>Service</Text>
+              <Text style={styles.colServicesOnJob}>Services on job</Text>
               <Text style={styles.colRate}>Rate</Text>
               <Text style={styles.colGross}>Job total</Text>
+              <Text style={styles.colDiscount}>Discount</Text>
               <Text style={styles.colCommission}>Commission</Text>
             </View>
             {d.commissionJobs.map((job, i) => (
               <View key={i} style={styles.tableRow}>
                 <Text style={styles.colJob}>{job.jobNumber}</Text>
                 <Text style={styles.colPlate}>{job.plateNumber ?? '-'}</Text>
+                <Text style={styles.colSize}>{job.vehicleSizeName ?? '-'}</Text>
                 <Text style={styles.colDate}>{job.date}</Text>
                 <Text style={styles.colService}>{job.serviceName ?? 'Whole job'}</Text>
+                <Text style={styles.colServicesOnJob}>{job.jobServiceNames || '-'}</Text>
                 <Text style={styles.colRate}>{job.rate}%</Text>
                 <Text style={styles.colGross}>{formatMoney(job.grossAmount)}</Text>
+                <Text style={styles.colDiscount}>{job.discountAmount ? formatMoney(job.discountAmount) : '-'}</Text>
                 <Text style={styles.colCommission}>{formatMoney(job.commissionAmount)}</Text>
               </View>
             ))}
             <View style={styles.totalRow}>
               <Text style={[styles.colJob, styles.bold]}>Total</Text>
               <Text style={styles.colPlate} />
+              <Text style={styles.colSize} />
               <Text style={styles.colDate} />
               <Text style={styles.colService} />
+              <Text style={styles.colServicesOnJob} />
               <Text style={styles.colRate} />
               <Text style={styles.colGross} />
+              <Text style={styles.colDiscount} />
               <Text style={[styles.colCommission, styles.bold]}>
                 {formatMoney(d.commissionJobs.reduce((sum, j) => sum + j.commissionAmount, 0))}
               </Text>
