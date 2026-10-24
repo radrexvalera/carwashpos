@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { BoardJob, LocalJob } from '@/lib/offline/types'
 import { InspectionDialog } from '@/features/inspections/InspectionDialog'
+import { EditJobDialog } from './EditJobDialog'
 import { retryFailedJob } from './api/jobMutations'
 import { completeJobOffline, updateJobStatus } from './api/jobStatusMutations'
 import { useJobBoardSync } from './hooks/useJobBoardSync'
@@ -46,6 +47,7 @@ export function JobQueuePage() {
   )
 
   const [inspectingJob, setInspectingJob] = useState<BoardJob | null>(null)
+  const [editingJobId, setEditingJobId] = useState<string | null>(null)
 
   const [, tick] = useState(0)
   useEffect(() => {
@@ -207,6 +209,11 @@ export function JobQueuePage() {
                       </Button>
                     )}
                     {!job.isPaid && (
+                      <Button variant="outline" className="w-full" onClick={() => setEditingJobId(job.id)}>
+                        Edit
+                      </Button>
+                    )}
+                    {!job.isPaid && (
                       <Link to={`/jobs/${job.id}/pay`}>
                         <Button variant="secondary" className="h-11 w-full text-base">
                           Collect payment
@@ -306,6 +313,10 @@ export function JobQueuePage() {
           open={!!inspectingJob}
           onOpenChange={(o) => !o && setInspectingJob(null)}
         />
+      )}
+
+      {profile && (
+        <EditJobDialog jobId={editingJobId} tenantId={profile.tenantId} onOpenChange={(o) => !o && setEditingJobId(null)} />
       )}
     </div>
   )

@@ -1403,6 +1403,26 @@ export interface Database {
         Args: { payload: Json }
         Returns: Json
       }
+      job_is_editable: {
+        Args: { p_job_id: string; p_tenant_id: string }
+        Returns: boolean
+      }
+      add_job_service: {
+        Args: { p_job_id: string; p_service_id: string; p_quantity: number; p_manual_price: number | null }
+        Returns: Json
+      }
+      remove_job_service: {
+        Args: { p_job_service_id: string }
+        Returns: Json
+      }
+      update_job_service_quantity: {
+        Args: { p_job_service_id: string; p_quantity: number }
+        Returns: Json
+      }
+      update_job_vehicle_size: {
+        Args: { p_job_id: string; p_vehicle_size_id: string }
+        Returns: Json
+      }
       create_sale: {
         Args: { payload: Json }
         Returns: Json
