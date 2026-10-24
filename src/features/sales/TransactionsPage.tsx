@@ -250,10 +250,6 @@ export function TransactionsPage() {
                     <span>{detail.crewNames.join(', ')}</span>
                   </div>
                 )}
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Cashier</span>
-                  <span>{detail.cashierName}</span>
-                </div>
 
                 <div className="mt-2 flex flex-col gap-1 border-t pt-2">
                   {detail.items.map((item, i) => (

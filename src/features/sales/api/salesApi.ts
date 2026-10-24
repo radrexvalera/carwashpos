@@ -93,7 +93,6 @@ export interface SaleDetail {
   saleNumber: string
   createdAt: string
   locationName: string
-  cashierName: string
   jobId: string | null
   plateNumber: string | null
   vehicleModel: string | null
@@ -125,16 +124,14 @@ export async function getSaleDetail(saleId: string): Promise<SaleDetail> {
   const { data: sale, error: saleError } = await supabase.from('sales').select('*').eq('id', saleId).single()
   if (saleError) throw saleError
 
-  const [itemsRes, paymentsRes, locationRes, cashierRes] = await Promise.all([
+  const [itemsRes, paymentsRes, locationRes] = await Promise.all([
     supabase.from('sale_items').select('*').eq('sale_id', saleId),
     supabase.from('payments').select('*').eq('sale_id', saleId),
     supabase.from('locations').select('name').eq('id', sale.location_id).single(),
-    supabase.from('user_profiles').select('full_name').eq('id', sale.created_by).single(),
   ])
   if (itemsRes.error) throw itemsRes.error
   if (paymentsRes.error) throw paymentsRes.error
   if (locationRes.error) throw locationRes.error
-  if (cashierRes.error) throw cashierRes.error
 
   let plateNumber: string | null = null
   let vehicleModel: string | null = null
@@ -168,7 +165,6 @@ export async function getSaleDetail(saleId: string): Promise<SaleDetail> {
     saleNumber: sale.sale_number,
     createdAt: sale.created_at,
     locationName: locationRes.data.name,
-    cashierName: cashierRes.data.full_name,
     jobId: sale.job_id,
     plateNumber,
     vehicleModel,
