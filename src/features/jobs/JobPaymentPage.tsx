@@ -62,6 +62,8 @@ export function JobPaymentPage() {
   const [shiftId, setShiftId] = useState<string | null>(null)
   const [jobNumber, setJobNumber] = useState('')
   const [plate, setPlate] = useState('')
+  const [vehicleModel, setVehicleModel] = useState<string | null>(null)
+  const [crewNames, setCrewNames] = useState<string[]>([])
   const [jobServices, setJobServices] = useState<JobService[]>([])
   const [discounts, setDiscounts] = useState<Record<string, string>>({})
   const [discountType, setDiscountType] = useState<'percentage' | 'fixed'>('percentage')
@@ -102,6 +104,8 @@ export function JobPaymentPage() {
       .then(([jobData, shift, settingsData]) => {
         setJobNumber(jobData.job.job_number)
         setPlate(jobData.vehicle.plate_number)
+        setVehicleModel(jobData.vehicle.model)
+        setCrewNames(jobData.crewNames)
         setJobServices(jobData.jobServices)
         setRetailItems(jobData.retailItems)
         setLocationName(jobData.locationName)
@@ -120,6 +124,8 @@ export function JobPaymentPage() {
           const jobData = await getJobForPaymentOffline(jobId, profile.tenantId)
           setJobNumber(jobData.job.job_number)
           setPlate(jobData.vehicle.plate_number)
+          setVehicleModel(jobData.vehicle.model)
+          setCrewNames(jobData.crewNames)
           setJobServices(jobData.jobServices)
           setRetailItems([])
           setLocationName(jobData.locationName)
@@ -331,6 +337,9 @@ export function JobPaymentPage() {
               locationName={locationName}
               paperWidth={(settings.receipt_paper_width as '58mm' | '80mm') || '58mm'}
               saleNumber={result.saleNumber}
+              plateNumber={plate}
+              vehicleModel={vehicleModel}
+              crewNames={crewNames}
               cashierName={profile?.fullName ?? ''}
               createdAt={result.createdAt}
               items={receiptItems}

@@ -41,6 +41,18 @@ export async function getJobForPayment(jobId: string) {
     .eq('is_active', true)
   if (retailError) throw retailError
 
+  const jobServiceIds = (jobServices ?? []).map((js) => js.id)
+  const { data: attendants, error: attendantsError } = jobServiceIds.length
+    ? await supabase.from('job_service_attendants').select('employee_id').in('job_service_id', jobServiceIds)
+    : { data: [], error: null }
+  if (attendantsError) throw attendantsError
+  const employeeIds = [...new Set((attendants ?? []).map((a) => a.employee_id))]
+  const { data: crewRows, error: crewError } = employeeIds.length
+    ? await supabase.from('employees').select('id, full_name, nickname').in('id', employeeIds)
+    : { data: [], error: null }
+  if (crewError) throw crewError
+  const crewNames = (crewRows ?? []).map((e) => e.nickname || e.full_name)
+
   let customer: { id: string; full_name: string } | null = null
   if (vehicle.customer_id) {
     const { data: customerData, error: customerError } = await supabase
@@ -59,6 +71,7 @@ export async function getJobForPayment(jobId: string) {
     jobServices: (jobServices ?? []).map((js) => ({ ...js, serviceName: serviceNameById.get(js.service_id) ?? 'Service' })),
     retailItems: retailItems ?? [],
     customer,
+    crewNames,
   }
 }
 
@@ -68,6 +81,8 @@ export async function getJobForPayment(jobId: string) {
 // place), so a job that was visible on the queue recently has what's needed here. Retail items and
 // the customer name are left out -- Receipt doesn't use either, and they're not worth caching a
 // whole separate read-path for just showing in the page header or upselling a product offline.
+// Crew comes from boardJobs' own already-cached attendantsSummary string instead of a fresh
+// job_service_attendants query.
 export async function getJobForPaymentOffline(jobId: string, tenantId: string) {
   const boardJob = await db.boardJobs.get(jobId)
   if (!boardJob) {
@@ -98,6 +113,7 @@ export async function getJobForPaymentOffline(jobId: string, tenantId: string) {
     })),
     retailItems: [] as { id: string; name: string; retail_price: number | null }[],
     customer: null as { id: string; full_name: string } | null,
+    crewNames: boardJob.attendantsSummary ? boardJob.attendantsSummary.split(', ') : [],
   }
 }
 

@@ -238,7 +238,16 @@ export function TransactionsPage() {
                 {detail.plateNumber && (
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Vehicle</span>
-                    <span>{detail.plateNumber}</span>
+                    <span>
+                      {detail.plateNumber}
+                      {detail.vehicleModel && ` — ${detail.vehicleModel}`}
+                    </span>
+                  </div>
+                )}
+                {detail.crewNames.length > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Crew</span>
+                    <span>{detail.crewNames.join(', ')}</span>
                   </div>
                 )}
                 <div className="flex justify-between text-sm">
@@ -328,6 +337,9 @@ export function TransactionsPage() {
                     locationName={detail.locationName}
                     paperWidth={(settings.receipt_paper_width as '58mm' | '80mm') || '58mm'}
                     saleNumber={detail.saleNumber}
+                    plateNumber={detail.plateNumber}
+                    vehicleModel={detail.vehicleModel}
+                    crewNames={detail.crewNames}
                     cashierName={detail.cashierName}
                     createdAt={detail.createdAt}
                     items={detail.items}

@@ -96,6 +96,8 @@ export interface SaleDetail {
   cashierName: string
   jobId: string | null
   plateNumber: string | null
+  vehicleModel: string | null
+  crewNames: string[]
   items: { name: string; quantity: number; unitPrice: number; lineTotal: number }[]
   subtotal: number
   manualDiscount: number
@@ -135,13 +137,30 @@ export async function getSaleDetail(saleId: string): Promise<SaleDetail> {
   if (cashierRes.error) throw cashierRes.error
 
   let plateNumber: string | null = null
+  let vehicleModel: string | null = null
   if (sale.job_id) {
     const { data: job } = await supabase.from('jobs').select('vehicle_id').eq('id', sale.job_id).single()
     if (job) {
-      const { data: vehicle } = await supabase.from('vehicles').select('plate_number').eq('id', job.vehicle_id).single()
+      const { data: vehicle } = await supabase.from('vehicles').select('plate_number, model').eq('id', job.vehicle_id).single()
       plateNumber = vehicle?.plate_number ?? null
+      vehicleModel = vehicle?.model ?? null
     }
   }
+
+  // Crew for the specific job_service lines this sale actually billed, not the whole job --
+  // matches what the customer is being charged for on this particular receipt.
+  const jobServiceIds = (itemsRes.data ?? []).map((i) => i.job_service_id).filter((id): id is string => !!id)
+  const { data: attendants, error: attendantsError } = jobServiceIds.length
+    ? await supabase.from('job_service_attendants').select('employee_id').in('job_service_id', jobServiceIds)
+    : { data: [], error: null }
+  if (attendantsError) throw attendantsError
+
+  const employeeIds = [...new Set((attendants ?? []).map((a) => a.employee_id))]
+  const { data: employees, error: employeesError } = employeeIds.length
+    ? await supabase.from('employees').select('id, full_name, nickname').in('id', employeeIds)
+    : { data: [], error: null }
+  if (employeesError) throw employeesError
+  const crewNames = (employees ?? []).map((e) => e.nickname || e.full_name)
 
   return {
     id: sale.id,
@@ -152,6 +171,8 @@ export async function getSaleDetail(saleId: string): Promise<SaleDetail> {
     cashierName: cashierRes.data.full_name,
     jobId: sale.job_id,
     plateNumber,
+    vehicleModel,
+    crewNames,
     items: (itemsRes.data ?? []).map((i) => ({
       name: i.description,
       quantity: i.quantity,

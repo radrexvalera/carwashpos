@@ -22,6 +22,9 @@ interface ReceiptProps {
   locationName: string
   paperWidth: '58mm' | '80mm'
   saleNumber: string
+  plateNumber?: string | null
+  vehicleModel?: string | null
+  crewNames?: string[]
   cashierName: string
   createdAt: string
   items: ReceiptLineItem[]
@@ -55,6 +58,9 @@ export function Receipt({
   locationName,
   paperWidth,
   saleNumber,
+  plateNumber,
+  vehicleModel,
+  crewNames,
   cashierName,
   createdAt,
   items,
@@ -118,6 +124,13 @@ export function Receipt({
 
       <div className="flex flex-col gap-0.5">
         <div>Transaction: {saleNumber}</div>
+        {plateNumber && (
+          <div>
+            Vehicle: {plateNumber}
+            {vehicleModel ? ` (${vehicleModel})` : ''}
+          </div>
+        )}
+        {!!crewNames?.length && <div>Crew: {crewNames.join(', ')}</div>}
         <div>Cashier: {cashierName}</div>
         <div>{new Date(createdAt).toLocaleString()}</div>
       </div>
