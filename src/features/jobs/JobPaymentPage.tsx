@@ -340,7 +340,6 @@ export function JobPaymentPage() {
               plateNumber={plate}
               vehicleModel={vehicleModel}
               crewNames={crewNames}
-              cashierName={profile?.fullName ?? ''}
               createdAt={result.createdAt}
               items={receiptItems}
               subtotal={preDiscountTotal}

@@ -25,7 +25,6 @@ interface ReceiptProps {
   plateNumber?: string | null
   vehicleModel?: string | null
   crewNames?: string[]
-  cashierName: string
   createdAt: string
   items: ReceiptLineItem[]
   subtotal: number
@@ -61,7 +60,6 @@ export function Receipt({
   plateNumber,
   vehicleModel,
   crewNames,
-  cashierName,
   createdAt,
   items,
   subtotal,
@@ -131,7 +129,6 @@ export function Receipt({
           </div>
         )}
         {!!crewNames?.length && <div>Crew: {crewNames.join(', ')}</div>}
-        <div>Cashier: {cashierName}</div>
         <div>{new Date(createdAt).toLocaleString()}</div>
       </div>
 

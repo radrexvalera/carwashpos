@@ -340,7 +340,6 @@ export function TransactionsPage() {
                     plateNumber={detail.plateNumber}
                     vehicleModel={detail.vehicleModel}
                     crewNames={detail.crewNames}
-                    cashierName={detail.cashierName}
                     createdAt={detail.createdAt}
                     items={detail.items}
                     subtotal={detail.subtotal}
