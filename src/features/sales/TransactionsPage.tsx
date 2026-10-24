@@ -13,7 +13,7 @@ import { localDateString } from '@/lib/date'
 import { getSettings, type Settings } from '@/features/settings/api/settingsApi'
 import { EditCrewDialog } from '@/features/jobs/EditCrewDialog'
 import { Receipt } from '@/features/jobs/Receipt'
-import { getSaleDetail, listSales, listSalesByPlate, type SaleDetail, type SaleListRow } from './api/salesApi'
+import { getSaleDetail, listSales, listSalesByPlate, voidSale, type SaleDetail, type SaleListRow } from './api/salesApi'
 
 function daysAgo(n: number) {
   const d = new Date()
@@ -34,6 +34,9 @@ export function TransactionsPage() {
   const [detail, setDetail] = useState<SaleDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [editingCrewJobId, setEditingCrewJobId] = useState<string | null>(null)
+  const [voidingSale, setVoidingSale] = useState(false)
+  const [voidReason, setVoidReason] = useState('')
+  const [voidSubmitting, setVoidSubmitting] = useState(false)
 
   async function load() {
     setLoading(true)
@@ -88,6 +91,23 @@ export function TransactionsPage() {
       .then(setDetail)
       .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to load transaction'))
       .finally(() => setDetailLoading(false))
+  }
+
+  async function handleVoid() {
+    if (!detail || !voidReason.trim()) return
+    setVoidSubmitting(true)
+    try {
+      await voidSale(detail.id, voidReason.trim())
+      setDetail((prev) => (prev ? { ...prev, status: 'voided' } : prev))
+      setSales((prev) => prev.map((s) => (s.id === detail.id ? { ...s, status: 'voided' } : s)))
+      setVoidingSale(false)
+      setVoidReason('')
+      toast.success('Transaction voided')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to void transaction')
+    } finally {
+      setVoidSubmitting(false)
+    }
   }
 
   return (
@@ -195,7 +215,10 @@ export function TransactionsPage() {
               <div className="flex flex-col gap-2 print:hidden">
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Sale number</span>
-                  <span className="font-medium">{detail.saleNumber}</span>
+                  <span className="font-medium">
+                    {detail.saleNumber}
+                    {detail.status === 'voided' && <Badge variant="destructive" className="ml-2">Voided</Badge>}
+                  </span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Date</span>
@@ -276,6 +299,11 @@ export function TransactionsPage() {
                       Edit crew
                     </Button>
                   )}
+                  {detail.status !== 'voided' && (
+                    <Button variant="destructive" onClick={() => setVoidingSale(true)}>
+                      Void transaction
+                    </Button>
+                  )}
                 </div>
               </div>
 
@@ -304,6 +332,28 @@ export function TransactionsPage() {
               )}
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={voidingSale} onOpenChange={(o) => !o && setVoidingSale(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Void transaction</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-3">
+            <p className="text-sm text-muted-foreground">
+              {detail?.saleNumber} — {formatMoney(detail?.total ?? 0)}. This releases its services to be billed again, gives back
+              any retail stock it consumed, and can't be undone.
+            </p>
+            <Input
+              placeholder="Reason (required)"
+              value={voidReason}
+              onChange={(e) => setVoidReason(e.target.value)}
+            />
+            <Button variant="destructive" disabled={!voidReason.trim() || voidSubmitting} onClick={handleVoid}>
+              Confirm void
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 

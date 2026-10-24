@@ -88,6 +88,8 @@ export async function listSalesByPlate(plateNumber: string): Promise<SaleListRow
 }
 
 export interface SaleDetail {
+  id: string
+  status: string
   saleNumber: string
   createdAt: string
   locationName: string
@@ -142,6 +144,8 @@ export async function getSaleDetail(saleId: string): Promise<SaleDetail> {
   }
 
   return {
+    id: sale.id,
+    status: sale.status,
     saleNumber: sale.sale_number,
     createdAt: sale.created_at,
     locationName: locationRes.data.name,
@@ -166,4 +170,9 @@ export async function getSaleDetail(saleId: string): Promise<SaleDetail> {
       changeGiven: p.change_given ?? undefined,
     })),
   }
+}
+
+export async function voidSale(saleId: string, reason: string) {
+  const { error } = await supabase.rpc('void_sale', { p_sale_id: saleId, p_reason: reason })
+  if (error) throw error
 }

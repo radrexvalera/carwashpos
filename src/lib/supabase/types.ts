@@ -1511,6 +1511,10 @@ export interface Database {
         Args: { p_expense_id: string; p_reason: string }
         Returns: undefined
       }
+      void_sale: {
+        Args: { p_sale_id: string; p_reason: string }
+        Returns: Json
+      }
     }
     Enums: Record<string, never>
     CompositeTypes: Record<string, never>
