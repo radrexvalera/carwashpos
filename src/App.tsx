@@ -55,6 +55,7 @@ const ExpenseCategoriesPage = lazyWithRetry(() =>
 const SalesReportPage = lazyWithRetry(() => import('@/features/reports/SalesReportPage').then((m) => ({ default: m.SalesReportPage })))
 const AppointmentsPage = lazyWithRetry(() => import('@/features/appointments/AppointmentsPage').then((m) => ({ default: m.AppointmentsPage })))
 const TransactionsPage = lazyWithRetry(() => import('@/features/sales/TransactionsPage').then((m) => ({ default: m.TransactionsPage })))
+const OwnerConsolePage = lazyWithRetry(() => import('@/features/owner/OwnerConsolePage').then((m) => ({ default: m.OwnerConsolePage })))
 
 function RouteLoading() {
   return <p className="p-6 text-muted-foreground">Loading…</p>
@@ -68,6 +69,9 @@ export default function App() {
           <Suspense fallback={<RouteLoading />}>
             <Routes>
               <Route path="/login" element={<LoginPage />} />
+              {/* Cross-tenant, not part of the per-tenant app shell/nav -- see OwnerConsolePage's
+                  own comment and supabase/functions/owner-console for why. */}
+              <Route path="/owner-console" element={<OwnerConsolePage />} />
               <Route
                 element={
                   <RoleGuard>
