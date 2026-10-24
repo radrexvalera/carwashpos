@@ -12,17 +12,34 @@ import { listLocations } from '@/features/catalog/api/catalogApi'
 import {
   closeShift,
   getActiveShift,
+  getShiftSummary,
   listCashMovements,
   openShift,
   recordCashMovement,
   type CashierShift,
   type CashMovement,
+  type ShiftSummary,
 } from './api/shiftsApi'
+
+const METHOD_LABELS: Record<string, string> = {
+  cash: 'Cash',
+  gcash: 'GCash',
+  maya: 'Maya',
+  bank_transfer: 'Bank Transfer',
+  card: 'Card',
+  maribank: 'Maribank',
+  gotyme: 'GoTyme',
+  rcbc: 'RCBC',
+  bpi: 'BPI',
+  unionbank: 'UnionBank',
+  qrph: 'QR Ph',
+}
 
 export function ShiftPage() {
   const { profile } = useTenant()
   const [shift, setShift] = useState<CashierShift | null>(null)
   const [movements, setMovements] = useState<CashMovement[]>([])
+  const [summary, setSummary] = useState<ShiftSummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [locationId, setLocationId] = useState('')
   const [openingFloat, setOpeningFloat] = useState('')
@@ -32,7 +49,9 @@ export function ShiftPage() {
   const [movementReason, setMovementReason] = useState('')
   const [countedCash, setCountedCash] = useState('')
   const [varianceReason, setVarianceReason] = useState('')
-  const [closedResult, setClosedResult] = useState<{ expected: number; counted: number; variance: number } | null>(null)
+  const [closedResult, setClosedResult] = useState<{ expected: number; counted: number; variance: number; summary: ShiftSummary | null } | null>(
+    null,
+  )
   const [submitting, setSubmitting] = useState(false)
 
   async function reload() {
@@ -40,8 +59,11 @@ export function ShiftPage() {
     try {
       const active = await getActiveShift()
       setShift(active)
-      if (active) setMovements(await listCashMovements(active.id))
-      else {
+      if (active) {
+        const [movementsData, summaryData] = await Promise.all([listCashMovements(active.id), getShiftSummary(active.id)])
+        setMovements(movementsData)
+        setSummary(summaryData)
+      } else {
         const locations = await listLocations()
         if (locations[0]) setLocationId(locations[0].id)
       }
@@ -91,7 +113,9 @@ export function ShiftPage() {
       setMovementAmount('')
       setMovementCategory('')
       setMovementReason('')
-      setMovements(await listCashMovements(shift.id))
+      const [movementsData, summaryData] = await Promise.all([listCashMovements(shift.id), getShiftSummary(shift.id)])
+      setMovements(movementsData)
+      setSummary(summaryData)
       toast.success('Recorded')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to record cash movement')
@@ -105,7 +129,7 @@ export function ShiftPage() {
     setSubmitting(true)
     try {
       const result = await closeShift(shift.id, Number(countedCash) || 0, varianceReason.trim() || undefined)
-      setClosedResult({ expected: result.expected_cash, counted: result.counted_cash, variance: result.variance })
+      setClosedResult({ expected: result.expected_cash, counted: result.counted_cash, variance: result.variance, summary })
       toast.success('Shift closed')
       await reload()
     } catch (err) {
@@ -120,6 +144,7 @@ export function ShiftPage() {
   }
 
   if (closedResult) {
+    const s = closedResult.summary
     return (
       <div className="mx-auto max-w-md">
         <Card>
@@ -127,6 +152,31 @@ export function ShiftPage() {
             <CardTitle>Shift closed</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-2 text-sm">
+            {s && (
+              <>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Opening float</span>
+                  <span>{formatMoney(s.openingFloat)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">+ Cash sales</span>
+                  <span>{formatMoney(s.cashSales)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">+ Cash in</span>
+                  <span>{formatMoney(s.cashIn)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">− Cash out</span>
+                  <span>{formatMoney(s.cashOut)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">− Cash expenses</span>
+                  <span>{formatMoney(s.cashExpenses)}</span>
+                </div>
+                <Separator />
+              </>
+            )}
             <div className="flex justify-between">
               <span className="text-muted-foreground">Expected cash</span>
               <span>{formatMoney(closedResult.expected)}</span>
@@ -188,6 +238,60 @@ export function ShiftPage() {
         <p className="text-muted-foreground">Opened {new Date(shift.opened_at).toLocaleString()}</p>
       </div>
 
+      {summary && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Cash drawer</CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+            <div className="flex flex-col gap-1.5 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Opening float</span>
+                <span>{formatMoney(summary.openingFloat)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">+ Cash sales</span>
+                <span>{formatMoney(summary.cashSales)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">+ Cash in</span>
+                <span>{formatMoney(summary.cashIn)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">− Cash out</span>
+                <span>{formatMoney(summary.cashOut)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">− Cash expenses</span>
+                <span>{formatMoney(summary.cashExpenses)}</span>
+              </div>
+              <Separator className="my-1" />
+              <div className="flex justify-between text-base font-semibold">
+                <span>Expected in drawer</span>
+                <span>{formatMoney(summary.expectedCash)}</span>
+              </div>
+            </div>
+            <div className="flex flex-col gap-1.5 text-sm">
+              <div className="text-muted-foreground">
+                Other payment methods this shift (already settled online — not counted in the drawer)
+              </div>
+              {Object.entries(summary.byMethod).filter(([method]) => method !== 'cash').length === 0 ? (
+                <p className="text-muted-foreground">None this shift.</p>
+              ) : (
+                Object.entries(summary.byMethod)
+                  .filter(([method]) => method !== 'cash')
+                  .map(([method, total]) => (
+                    <div key={method} className="flex justify-between">
+                      <span>{METHOD_LABELS[method] ?? method}</span>
+                      <span>{formatMoney(total)}</span>
+                    </div>
+                  ))
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
@@ -241,6 +345,12 @@ export function ShiftPage() {
             <CardTitle>Close shift</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
+            {summary && (
+              <div className="flex justify-between rounded-md bg-muted px-3 py-2 text-sm">
+                <span className="text-muted-foreground">Expected cash</span>
+                <span className="font-semibold">{formatMoney(summary.expectedCash)}</span>
+              </div>
+            )}
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="counted-cash">Counted cash in drawer</Label>
               <Input

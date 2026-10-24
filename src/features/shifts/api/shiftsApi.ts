@@ -38,6 +38,39 @@ export async function openShift(input: { tenantId: string; locationId: string; o
   return data
 }
 
+export interface ShiftSummary {
+  openingFloat: number
+  cashSales: number
+  cashIn: number
+  cashOut: number
+  cashExpenses: number
+  expectedCash: number
+  byMethod: Record<string, number>
+}
+
+export async function getShiftSummary(shiftId: string): Promise<ShiftSummary> {
+  const { data, error } = await supabase.rpc('get_shift_summary', { p_shift_id: shiftId })
+  if (error) throw error
+  const d = data as {
+    opening_float: number
+    cash_sales: number
+    cash_in: number
+    cash_out: number
+    cash_expenses: number
+    expected_cash: number
+    by_method: Record<string, number>
+  }
+  return {
+    openingFloat: d.opening_float,
+    cashSales: d.cash_sales,
+    cashIn: d.cash_in,
+    cashOut: d.cash_out,
+    cashExpenses: d.cash_expenses,
+    expectedCash: d.expected_cash,
+    byMethod: d.by_method,
+  }
+}
+
 export async function closeShift(shiftId: string, countedCash: number, varianceReason?: string) {
   const { data, error } = await supabase.rpc('close_shift', {
     p_shift_id: shiftId,

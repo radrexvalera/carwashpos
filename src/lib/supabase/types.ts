@@ -528,6 +528,7 @@ export interface Database {
           payment_method: 'cash' | 'gcash' | 'maya' | 'bank_transfer' | 'card' | 'maribank' | 'gotyme' | 'rcbc' | 'bpi' | 'unionbank' | 'qrph'
           paid_to: string | null
           reference_note: string | null
+          shift_id: string | null
           is_voided: boolean
           voided_by: string | null
           voided_at: string | null
@@ -1441,6 +1442,10 @@ export interface Database {
       }
       close_shift: {
         Args: { p_shift_id: string; p_counted_cash: number; p_variance_reason?: string }
+        Returns: Json
+      }
+      get_shift_summary: {
+        Args: { p_shift_id: string }
         Returns: Json
       }
       current_employee_id: {
