@@ -172,7 +172,12 @@ export async function getSaleDetail(saleId: string): Promise<SaleDetail> {
   }
 }
 
-export async function voidSale(saleId: string, reason: string) {
-  const { error } = await supabase.rpc('void_sale', { p_sale_id: saleId, p_reason: reason })
+export async function voidSale(saleId: string, reason: string, reverseCommission: boolean) {
+  const { data, error } = await supabase.rpc('void_sale', {
+    p_sale_id: saleId,
+    p_reason: reason,
+    p_reverse_commission: reverseCommission,
+  })
   if (error) throw error
+  return data as { id: string; status: string; commission_reversed_count: number; commission_skipped_count: number }
 }

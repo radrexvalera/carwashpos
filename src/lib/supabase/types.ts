@@ -1512,7 +1512,7 @@ export interface Database {
         Returns: undefined
       }
       void_sale: {
-        Args: { p_sale_id: string; p_reason: string }
+        Args: { p_sale_id: string; p_reason: string; p_reverse_commission?: boolean }
         Returns: Json
       }
     }

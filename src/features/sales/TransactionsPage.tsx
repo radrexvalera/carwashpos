@@ -4,6 +4,7 @@ import { useTenant } from '@/app/TenantProvider'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -36,6 +37,7 @@ export function TransactionsPage() {
   const [editingCrewJobId, setEditingCrewJobId] = useState<string | null>(null)
   const [voidingSale, setVoidingSale] = useState(false)
   const [voidReason, setVoidReason] = useState('')
+  const [voidReverseCommission, setVoidReverseCommission] = useState(false)
   const [voidSubmitting, setVoidSubmitting] = useState(false)
 
   async function load() {
@@ -97,12 +99,21 @@ export function TransactionsPage() {
     if (!detail || !voidReason.trim()) return
     setVoidSubmitting(true)
     try {
-      await voidSale(detail.id, voidReason.trim())
+      const result = await voidSale(detail.id, voidReason.trim(), voidReverseCommission)
       setDetail((prev) => (prev ? { ...prev, status: 'voided' } : prev))
       setSales((prev) => prev.map((s) => (s.id === detail.id ? { ...s, status: 'voided' } : s)))
       setVoidingSale(false)
       setVoidReason('')
-      toast.success('Transaction voided')
+      setVoidReverseCommission(false)
+      if (result.commission_skipped_count > 0) {
+        toast.success(
+          `Transaction voided. Commission reversed for ${result.commission_reversed_count}, but ${result.commission_skipped_count} line(s) were already paid out through payroll -- use a payroll adjustment to correct those.`,
+        )
+      } else if (result.commission_reversed_count > 0) {
+        toast.success(`Transaction voided. Commission reversed for ${result.commission_reversed_count} employee(s).`)
+      } else {
+        toast.success('Transaction voided')
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to void transaction')
     } finally {
@@ -350,6 +361,16 @@ export function TransactionsPage() {
               value={voidReason}
               onChange={(e) => setVoidReason(e.target.value)}
             />
+            <label className="flex items-start gap-2 text-sm">
+              <Checkbox checked={voidReverseCommission} onCheckedChange={(c) => setVoidReverseCommission(c === true)} />
+              <span>
+                Also reverse commission for this job
+                <span className="block text-xs text-muted-foreground">
+                  Leave off for a billing mistake where the service still happened. Check it if the job itself was bad or
+                  undone.
+                </span>
+              </span>
+            </label>
             <Button variant="destructive" disabled={!voidReason.trim() || voidSubmitting} onClick={handleVoid}>
               Confirm void
             </Button>
