@@ -191,11 +191,14 @@ export function JobQueuePage() {
                     )}
                     {col.status === 'waiting' && (bays ?? []).length > 0 && (
                       <div className="flex flex-wrap gap-1.5">
-                        {(bays ?? []).map((b) => (
+                        {(bays ?? []).filter((b) => !bayOccupancy.has(b.id)).map((b) => (
                           <Button key={b.id} variant="outline" onClick={() => advance(job, 'ongoing', b.id)}>
                             → {b.name}
                           </Button>
                         ))}
+                        {(bays ?? []).every((b) => bayOccupancy.has(b.id)) && (
+                          <span className="text-xs text-muted-foreground">All bays occupied</span>
+                        )}
                       </div>
                     )}
                     {col.status !== 'waiting' && col.next && (
