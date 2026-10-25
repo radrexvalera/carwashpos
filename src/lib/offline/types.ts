@@ -62,8 +62,11 @@ export interface MutationQueueEntry {
 
 // A job's services are priced/created server-side (create_job()) -- this local shape is what the
 // POS optimistically shows before sync confirms it, same "coarse-grained mutation" principle as
-// LocalTicket.
+// LocalTicket. `id` is client-generated (RegisterPage) and sent to create_job(), which honors it
+// as job_services.id instead of generating its own -- this is what lets a job_payment mutation
+// reference a specific service line before the job has even synced yet.
 export interface LocalJobServiceLine {
+  id: string
   serviceId: string
   serviceName: string
   unitPrice: number
@@ -78,6 +81,10 @@ export type JobSyncStatus = 'pending' | 'syncing' | 'synced' | 'failed'
 export interface LocalJob {
   clientGeneratedId: string
   tenantId: string
+  // Same value as clientGeneratedId, set immediately at creation (not just after sync) -- per
+  // create_job()'s own client_generated_job_ids migration, this IS the job's real id from the
+  // start, synced or not, so anything needing to reference this job (e.g. collecting payment
+  // before it's even synced) can use `id` unconditionally rather than branching on sync state.
   id?: string
   jobNumber?: string
   status: string

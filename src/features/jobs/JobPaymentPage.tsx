@@ -16,7 +16,13 @@ import { safeGetItem, safeSetItem } from '@/lib/safeStorage'
 import { useOnlineStatus } from '@/lib/offline/useOnlineStatus'
 import { getActiveShift } from '@/features/shifts/api/shiftsApi'
 import { getSettings, type Settings } from '@/features/settings/api/settingsApi'
-import { createSaleForJob, getJobForPayment, getJobForPaymentOffline, queuePaymentOffline } from './api/jobPaymentApi'
+import {
+  createSaleForJob,
+  getJobForPayment,
+  getJobForPaymentFromPendingLocal,
+  getJobForPaymentOffline,
+  queuePaymentOffline,
+} from './api/jobPaymentApi'
 import { Receipt } from './Receipt'
 import type { InventoryStockLevel } from '@/features/inventory/api/inventoryApi'
 
@@ -120,8 +126,7 @@ export function JobPaymentPage() {
         // payment can still be collected; create_sale() is the real source of truth and will
         // reject this at sync time if something's genuinely wrong (e.g. the cached shift was
         // closed in the meantime), surfaced through the normal failed-mutation recovery UI.
-        try {
-          const jobData = await getJobForPaymentOffline(jobId, profile.tenantId)
+        async function applyOfflineJobData(jobData: Awaited<ReturnType<typeof getJobForPaymentOffline>>) {
           setJobNumber(jobData.job.job_number)
           setPlate(jobData.vehicle.plate_number)
           setVehicleModel(jobData.vehicle.model)
@@ -132,11 +137,21 @@ export function JobPaymentPage() {
           const cachedShiftId = shiftCacheKey ? safeGetItem(shiftCacheKey) : null
           setShiftId(cachedShiftId)
           setCustomer(jobData.customer)
-          const cachedSettings = await db.settings.get(profile.tenantId)
+          const cachedSettings = await db.settings.get(profile!.tenantId)
           setSettings(cachedSettings ?? null)
           setOfflineMode(true)
-        } catch (err) {
-          setLoadError(err instanceof Error ? err.message : 'Failed to load job')
+        }
+
+        try {
+          await applyOfflineJobData(await getJobForPaymentOffline(jobId, profile.tenantId))
+        } catch {
+          // Not a synced job either -- last resort: a job created offline that's never reached
+          // the server at all, still sitting in the local outbox.
+          try {
+            await applyOfflineJobData(await getJobForPaymentFromPendingLocal(jobId, profile.tenantId))
+          } catch (err) {
+            setLoadError(err instanceof Error ? err.message : 'Failed to load job')
+          }
         }
       })
       .finally(() => setLoading(false))

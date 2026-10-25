@@ -197,6 +197,7 @@ export function RegisterPage() {
     setLines((prev) => [
       ...prev,
       {
+        id: crypto.randomUUID(),
         serviceId: service.id,
         serviceName: service.name,
         unitPrice: price,

@@ -117,6 +117,47 @@ export async function getJobForPaymentOffline(jobId: string, tenantId: string) {
   }
 }
 
+// Second offline fallback, for a job that's never synced at all -- created offline and still
+// sitting in db.jobs as a 'pending'/'failed'/'syncing' local record, so it has no boardJobs entry
+// yet either. Only reachable because job ids and job_service ids are now client-generated (see
+// 0075_client_generated_job_ids.sql), so this job's real server id is already known even though
+// create_job() hasn't actually run yet -- queuePaymentOffline() can reference it directly, and
+// the mutation queue's own ordering guarantees create_job() reaches the server first.
+export async function getJobForPaymentFromPendingLocal(jobId: string, tenantId: string) {
+  const localJob = await db.jobs.get(jobId)
+  if (!localJob) {
+    throw new Error("This job isn't available for payment yet.")
+  }
+
+  const alreadyQueued = await db.mutationQueue
+    .where('entity')
+    .equals('job_payment')
+    .and((m) => (m.payload as { job_id?: string }).job_id === jobId)
+    .first()
+  if (alreadyQueued) {
+    throw new Error('A payment for this job has already been submitted.')
+  }
+
+  const locations = await db.locations.where('tenant_id').equals(tenantId).toArray()
+
+  return {
+    job: { job_number: localJob.jobNumber ?? 'Pending' },
+    vehicle: { plate_number: localJob.vehiclePlate, make: localJob.vehicleMake, model: localJob.vehicleModel },
+    locationName: locations[0]?.name ?? '',
+    jobServices: localJob.services.map((s) => ({
+      id: s.id,
+      service_id: s.serviceId,
+      unit_price: s.unitPrice,
+      quantity: s.quantity,
+      line_total: s.lineTotal,
+      serviceName: s.serviceName,
+    })),
+    retailItems: [] as { id: string; name: string; retail_price: number | null }[],
+    customer: null as { id: string; full_name: string } | null,
+    crewNames: [...new Set(localJob.services.flatMap((s) => s.attendantNames))],
+  }
+}
+
 interface CreateSaleInput {
   tenantId: string
   shiftId: string

@@ -45,6 +45,19 @@ export function JobQueuePage() {
     [profile?.tenantId],
     [],
   )
+  // A pending (not yet synced) job has no boardJobs row to carry an isPaid flag, so "already has a
+  // payment queued" is derived straight from the outbox instead -- same job ids a job_payment
+  // mutation's payload references, regardless of whether it's synced yet.
+  const queuedPaymentJobIds = useLiveQuery(
+    () =>
+      db.mutationQueue
+        .where('entity')
+        .equals('job_payment')
+        .toArray()
+        .then((rows) => new Set(rows.map((m) => (m.payload as { job_id?: string }).job_id).filter((id): id is string => !!id))),
+    [],
+    new Set<string>(),
+  )
 
   const [inspectingJob, setInspectingJob] = useState<BoardJob | null>(null)
   const [editingJobId, setEditingJobId] = useState<string | null>(null)
@@ -159,6 +172,13 @@ export function JobQueuePage() {
                             Retry
                           </Button>
                         </>
+                      )}
+                      {job.id && job.syncStatus !== 'failed' && !queuedPaymentJobIds.has(job.id) && (
+                        <Link to={`/jobs/${job.id}/pay`}>
+                          <Button variant="secondary" className="h-11 w-full text-base">
+                            Collect payment
+                          </Button>
+                        </Link>
                       )}
                     </CardContent>
                   </Card>

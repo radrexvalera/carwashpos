@@ -22,6 +22,10 @@ export async function createJobOffline(input: CreateJobInput) {
 
   const localJob: LocalJob = {
     clientGeneratedId,
+    // Set immediately, not just after sync -- create_job() honors this as the job's real id (see
+    // 0075_client_generated_job_ids.sql), so anything referencing this job (e.g. collecting
+    // payment before it's synced) can use it right away.
+    id: clientGeneratedId,
     tenantId: input.tenantId,
     status: 'waiting',
     vehicleId: input.vehicleId,
@@ -45,9 +49,11 @@ export async function createJobOffline(input: CreateJobInput) {
     clientGeneratedId,
     payload: {
       client_generated_id: clientGeneratedId,
+      job_id: clientGeneratedId,
       vehicle_id: input.vehicleId,
       vehicle_size_id: input.vehicleSizeId,
       services: input.services.map((s) => ({
+        id: s.id,
         service_id: s.serviceId,
         quantity: s.quantity,
         attendant_employee_ids: s.attendantEmployeeIds,
