@@ -285,15 +285,20 @@ export function TransactionsPage() {
                       <span>−{formatMoney(detail.membershipDiscount)}</span>
                     </div>
                   )}
-                  <div className="flex justify-between text-base font-semibold">
-                    <span>Total</span>
-                    <span>{formatMoney(detail.total)}</span>
-                  </div>
                   {detail.cardProcessingFee > 0 && (
-                    <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>Card processing fee (absorbed by business, not charged to customer)</span>
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Card processing fee</span>
                       <span>−{formatMoney(detail.cardProcessingFee)}</span>
                     </div>
+                  )}
+                  <div className="flex justify-between text-base font-semibold">
+                    <span>Total</span>
+                    <span>{formatMoney(detail.total - detail.cardProcessingFee)}</span>
+                  </div>
+                  {detail.cardProcessingFee > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      Customer paid {formatMoney(detail.total)} — the fee is absorbed by the business, not charged to them.
+                    </p>
                   )}
                 </div>
 

@@ -43,7 +43,9 @@ export async function getSalesReport(fromIso: string, toIso: string) {
   return {
     saleCount: completed.length,
     voidedCount,
-    grossSales: completed.reduce((sum, s) => sum + s.total, 0),
+    // Net of the card processing fee -- the fee is a real cost the business absorbs, so it reduces
+    // what counts as sales here too, not just Net.
+    grossSales: completed.reduce((sum, s) => sum + s.total - s.card_processing_fee, 0),
     discountTotal: completed.reduce((sum, s) => sum + s.discount_total + s.manual_discount_amount, 0),
     promotionDiscountTotal: completed.reduce((sum, s) => sum + s.promotion_discount_amount, 0),
     cardProcessingFeeTotal: completed.reduce((sum, s) => sum + s.card_processing_fee, 0),
@@ -139,9 +141,11 @@ export async function getDashboardSummary(fromStr: string = localDateString(), t
   }
 
   const completedSales = (salesRes.data ?? []).filter((s) => s.status === 'completed')
-  const sales = completedSales.reduce((sum, s) => sum + s.total, 0)
-  const expenses = (expensesRes.data ?? []).filter((e) => !e.is_voided).reduce((sum, e) => sum + e.amount, 0)
   const cardProcessingFees = completedSales.reduce((sum, s) => sum + s.card_processing_fee, 0)
+  // Net of the card processing fee -- the fee is a real cost the business absorbs, so it reduces
+  // what counts as sales here too, not just net.
+  const sales = completedSales.reduce((sum, s) => sum + s.total, 0) - cardProcessingFees
+  const expenses = (expensesRes.data ?? []).filter((e) => !e.is_voided).reduce((sum, e) => sum + e.amount, 0)
 
   const jobStatusCounts: Record<string, number> = {}
   for (const j of activeJobsRes.data ?? []) {
@@ -152,7 +156,7 @@ export async function getDashboardSummary(fromStr: string = localDateString(), t
     sales,
     expenses,
     cardProcessingFees,
-    net: sales - expenses - cardProcessingFees,
+    net: sales - expenses,
     activeJobsCount: (activeJobsRes.data ?? []).length,
     jobStatusCounts,
     completedCount: completedRes.count ?? 0,

@@ -63,7 +63,8 @@ export function SalesReportPage() {
     load(range.from, range.to)
   }
 
-  const net = sales && expenses ? sales.grossSales - expenses.total - sales.cardProcessingFeeTotal : 0
+  // grossSales is already net of the card processing fee, so it's not subtracted again here.
+  const net = sales && expenses ? sales.grossSales - expenses.total : 0
 
   function csvCell(value: string | number) {
     const str = String(value)
