@@ -109,6 +109,13 @@ class CarWashDB extends Dexie {
       locations: 'id, tenant_id',
       settings: 'tenant_id',
     })
+
+    // Full offline create+pay: a pending job_payment mutation needs to be looked up by entity type
+    // to check "is a payment already queued for this job" (see getJobForPaymentFromPendingLocal /
+    // JobQueuePage's queuedPaymentJobIds) -- entity was never an indexed field before this.
+    this.version(8).stores({
+      mutationQueue: 'id, tenantId, status, sequence, entity',
+    })
   }
 }
 
