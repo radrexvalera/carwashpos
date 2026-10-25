@@ -86,6 +86,10 @@ export function RegisterPage() {
         const open = !!shift
         setHasOpenShift(open)
         if (shiftCacheKey) safeSetItem(shiftCacheKey, open ? 'true' : 'false')
+        // Also warms JobPaymentPage's own shift-id cache (same key it reads offline) -- Register
+        // is the page a cashier is on constantly, so this is the realistic way that cache gets
+        // populated, not waiting for someone to have visited Collect Payment online first.
+        if (profile && shift?.id) safeSetItem(`openShiftId:${profile.id}`, shift.id)
       })
       .catch(() => {
         // Couldn't verify (e.g. a request that failed despite navigator.onLine saying we're

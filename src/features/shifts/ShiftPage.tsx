@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { formatMoney } from '@/lib/money'
+import { safeSetItem } from '@/lib/safeStorage'
 import { listLocations } from '@/features/catalog/api/catalogApi'
 import {
   closeShift,
@@ -59,6 +60,10 @@ export function ShiftPage() {
     try {
       const active = await getActiveShift()
       setShift(active)
+      // Warms the same shift-id cache JobPaymentPage reads from when offline -- this page is
+      // where a shift is actually opened, so caching it here (not just on Register/Collect
+      // Payment) is the earliest point it can become available for offline use.
+      if (active && profile) safeSetItem(`openShiftId:${profile.id}`, active.id)
       if (active) {
         const [movementsData, summaryData] = await Promise.all([listCashMovements(active.id), getShiftSummary(active.id)])
         setMovements(movementsData)
