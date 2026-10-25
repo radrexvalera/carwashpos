@@ -112,30 +112,33 @@ export async function getCashAdvancesSummary(fromDate: string, toDate: string) {
   }
 }
 
-export async function getDashboardSummary() {
-  const todayStr = localDateString()
-  const todayStartIso = new Date(`${todayStr}T00:00:00`).toISOString()
-  const todayEndIso = new Date(`${todayStr}T23:59:59`).toISOString()
+// Sales/expenses/net/completed-jobs are for the selected range (same from/to the caller's date
+// filter produces); active jobs, low stock, and pending commission are current snapshots of live
+// state, not period totals, so a date range wouldn't mean anything for them -- always "right now"
+// regardless of what range is selected.
+export async function getDashboardSummary(fromStr: string = localDateString(), toStr: string = localDateString()) {
+  const fromIso = new Date(`${fromStr}T00:00:00`).toISOString()
+  const toIso = new Date(`${toStr}T23:59:59`).toISOString()
 
-  const [salesRes, expensesRes, activeJobsRes, completedTodayRes, lowStockRes, commissionRes] = await Promise.all([
-    supabase.from('sales').select('total, status').gte('created_at', todayStartIso).lte('created_at', todayEndIso),
-    supabase.from('expenses').select('amount, is_voided').eq('expense_date', todayStr),
+  const [salesRes, expensesRes, activeJobsRes, completedRes, lowStockRes, commissionRes] = await Promise.all([
+    supabase.from('sales').select('total, status').gte('created_at', fromIso).lte('created_at', toIso),
+    supabase.from('expenses').select('amount, is_voided').gte('expense_date', fromStr).lte('expense_date', toStr),
     supabase.from('jobs').select('status').not('status', 'in', '(completed,cancelled)'),
     supabase
       .from('jobs')
       .select('id', { count: 'exact', head: true })
       .eq('status', 'completed')
-      .gte('completed_at', todayStartIso)
-      .lte('completed_at', todayEndIso),
+      .gte('completed_at', fromIso)
+      .lte('completed_at', toIso),
     supabase.from('inventory_stock_levels').select('id').eq('is_low_stock', true).eq('is_active', true),
     supabase.from('commission_ledger').select('commission_amount').eq('status', 'earned'),
   ])
-  for (const r of [salesRes, expensesRes, activeJobsRes, completedTodayRes, lowStockRes, commissionRes]) {
+  for (const r of [salesRes, expensesRes, activeJobsRes, completedRes, lowStockRes, commissionRes]) {
     if (r.error) throw r.error
   }
 
-  const todaySales = (salesRes.data ?? []).filter((s) => s.status === 'completed').reduce((sum, s) => sum + s.total, 0)
-  const todayExpenses = (expensesRes.data ?? []).filter((e) => !e.is_voided).reduce((sum, e) => sum + e.amount, 0)
+  const sales = (salesRes.data ?? []).filter((s) => s.status === 'completed').reduce((sum, s) => sum + s.total, 0)
+  const expenses = (expensesRes.data ?? []).filter((e) => !e.is_voided).reduce((sum, e) => sum + e.amount, 0)
 
   const jobStatusCounts: Record<string, number> = {}
   for (const j of activeJobsRes.data ?? []) {
@@ -143,12 +146,12 @@ export async function getDashboardSummary() {
   }
 
   return {
-    todaySales,
-    todayExpenses,
-    todayNet: todaySales - todayExpenses,
+    sales,
+    expenses,
+    net: sales - expenses,
     activeJobsCount: (activeJobsRes.data ?? []).length,
     jobStatusCounts,
-    completedTodayCount: completedTodayRes.count ?? 0,
+    completedCount: completedRes.count ?? 0,
     lowStockCount: (lowStockRes.data ?? []).length,
     pendingCommission: (commissionRes.data ?? []).reduce((sum, c) => sum + c.commission_amount, 0),
   }

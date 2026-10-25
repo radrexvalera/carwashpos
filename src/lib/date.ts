@@ -10,3 +10,32 @@ export function localDateString(date: Date = new Date()): string {
   const day = String(date.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
 }
+
+export type DateRangePreset = 'today' | 'last7Days' | 'thisMonth' | 'thisYear'
+
+export const DATE_RANGE_PRESETS: { value: DateRangePreset; label: string }[] = [
+  { value: 'today', label: 'Today' },
+  { value: 'last7Days', label: 'Last 7 Days' },
+  { value: 'thisMonth', label: 'This Month' },
+  { value: 'thisYear', label: 'This Year' },
+]
+
+// All built from local Date fields (see localDateString's own note) -- never UTC-derived, so these
+// stay correct right up to midnight local time regardless of the server/browser's own timezone.
+export function getDateRangeForPreset(preset: DateRangePreset): { from: string; to: string } {
+  const now = new Date()
+  const to = localDateString(now)
+  switch (preset) {
+    case 'today':
+      return { from: to, to }
+    case 'last7Days': {
+      const from = new Date(now)
+      from.setDate(from.getDate() - 6)
+      return { from: localDateString(from), to }
+    }
+    case 'thisMonth':
+      return { from: localDateString(new Date(now.getFullYear(), now.getMonth(), 1)), to }
+    case 'thisYear':
+      return { from: localDateString(new Date(now.getFullYear(), 0, 1)), to }
+  }
+}

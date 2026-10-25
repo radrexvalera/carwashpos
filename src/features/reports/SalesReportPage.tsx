@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
+import { DateRangePresets } from '@/components/DateRangePresets'
 import { formatMoney } from '@/lib/money'
 import { localDateString } from '@/lib/date'
 import { getCashAdvancesSummary, getExpensesByCategory, getSalesReport } from './api/reportsApi'
@@ -31,15 +32,15 @@ export function SalesReportPage() {
   const [cashAdvances, setCashAdvances] = useState<Awaited<ReturnType<typeof getCashAdvancesSummary>> | null>(null)
   const [loading, setLoading] = useState(true)
 
-  async function load() {
+  async function load(f: string = from, t: string = to) {
     setLoading(true)
     try {
-      const fromIso = new Date(`${from}T00:00:00`).toISOString()
-      const toIso = new Date(`${to}T23:59:59`).toISOString()
+      const fromIso = new Date(`${f}T00:00:00`).toISOString()
+      const toIso = new Date(`${t}T23:59:59`).toISOString()
       const [salesData, expensesData, cashAdvancesData] = await Promise.all([
         getSalesReport(fromIso, toIso),
-        getExpensesByCategory(from, to),
-        getCashAdvancesSummary(from, to),
+        getExpensesByCategory(f, t),
+        getCashAdvancesSummary(f, t),
       ])
       setSales(salesData)
       setExpenses(expensesData)
@@ -55,6 +56,12 @@ export function SalesReportPage() {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  function handlePreset(range: { from: string; to: string }) {
+    setFrom(range.from)
+    setTo(range.to)
+    load(range.from, range.to)
+  }
 
   const net = sales && expenses ? sales.grossSales - expenses.total : 0
 
@@ -116,6 +123,7 @@ export function SalesReportPage() {
 
       <Card>
         <CardContent className="flex flex-wrap items-end gap-3 pt-6">
+          <DateRangePresets onSelect={handlePreset} />
           <div className="flex flex-col gap-1.5">
             <Label>From</Label>
             <Input type="date" className="w-40" value={from} onChange={(e) => setFrom(e.target.value)} />
@@ -124,7 +132,7 @@ export function SalesReportPage() {
             <Label>To</Label>
             <Input type="date" className="w-40" value={to} onChange={(e) => setTo(e.target.value)} />
           </div>
-          <Button variant="outline" onClick={load} disabled={loading}>
+          <Button variant="outline" onClick={() => load()} disabled={loading}>
             Refresh
           </Button>
           <Button variant="outline" onClick={exportCsv} disabled={loading || !sales}>
