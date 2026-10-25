@@ -44,6 +44,7 @@ export interface ShiftSummary {
   cashIn: number
   cashOut: number
   cashExpenses: number
+  cashAdvances: number
   expectedCash: number
   byMethod: Record<string, number>
 }
@@ -57,6 +58,7 @@ export async function getShiftSummary(shiftId: string): Promise<ShiftSummary> {
     cash_in: number
     cash_out: number
     cash_expenses: number
+    cash_advances: number
     expected_cash: number
     by_method: Record<string, number>
   }
@@ -66,6 +68,7 @@ export async function getShiftSummary(shiftId: string): Promise<ShiftSummary> {
     cashIn: d.cash_in,
     cashOut: d.cash_out,
     cashExpenses: d.cash_expenses,
+    cashAdvances: d.cash_advances,
     expectedCash: d.expected_cash,
     byMethod: d.by_method,
   }

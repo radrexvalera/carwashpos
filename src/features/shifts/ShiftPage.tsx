@@ -179,6 +179,10 @@ export function ShiftPage() {
                   <span className="text-muted-foreground">− Cash expenses</span>
                   <span>{formatMoney(s.cashExpenses)}</span>
                 </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">− Cash advances</span>
+                  <span>{formatMoney(s.cashAdvances)}</span>
+                </div>
                 <Separator />
               </>
             )}
@@ -269,6 +273,10 @@ export function ShiftPage() {
               <div className="flex justify-between">
                 <span className="text-muted-foreground">− Cash expenses</span>
                 <span>{formatMoney(summary.cashExpenses)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">− Cash advances</span>
+                <span>{formatMoney(summary.cashAdvances)}</span>
               </div>
               <Separator className="my-1" />
               <div className="flex justify-between text-base font-semibold">
