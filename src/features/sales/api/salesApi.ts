@@ -102,6 +102,7 @@ export interface SaleDetail {
   manualDiscount: number
   promotionDiscount: number
   membershipDiscount: number
+  cardProcessingFee: number
   total: number
   payments: { methodLabel: string; amount: number; tenderedAmount?: number; changeGiven?: number }[]
 }
@@ -179,6 +180,7 @@ export async function getSaleDetail(saleId: string): Promise<SaleDetail> {
     manualDiscount: sale.manual_discount_amount,
     promotionDiscount: sale.promotion_discount_amount,
     membershipDiscount: sale.membership_discount_amount,
+    cardProcessingFee: sale.card_processing_fee,
     total: sale.total,
     payments: (paymentsRes.data ?? []).map((p) => ({
       methodLabel: METHOD_LABELS[p.method] ?? p.method,

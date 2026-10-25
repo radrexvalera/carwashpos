@@ -46,6 +46,7 @@ export async function getSalesReport(fromIso: string, toIso: string) {
     grossSales: completed.reduce((sum, s) => sum + s.total, 0),
     discountTotal: completed.reduce((sum, s) => sum + s.discount_total + s.manual_discount_amount, 0),
     promotionDiscountTotal: completed.reduce((sum, s) => sum + s.promotion_discount_amount, 0),
+    cardProcessingFeeTotal: completed.reduce((sum, s) => sum + s.card_processing_fee, 0),
     serviceRevenue,
     productRevenue,
     byMethod: [...byMethod.entries()].map(([method, total]) => ({ method, total })).sort((a, b) => b.total - a.total),
@@ -121,7 +122,7 @@ export async function getDashboardSummary(fromStr: string = localDateString(), t
   const toIso = new Date(`${toStr}T23:59:59`).toISOString()
 
   const [salesRes, expensesRes, activeJobsRes, completedRes, lowStockRes, commissionRes] = await Promise.all([
-    supabase.from('sales').select('total, status').gte('created_at', fromIso).lte('created_at', toIso),
+    supabase.from('sales').select('total, status, card_processing_fee').gte('created_at', fromIso).lte('created_at', toIso),
     supabase.from('expenses').select('amount, is_voided').gte('expense_date', fromStr).lte('expense_date', toStr),
     supabase.from('jobs').select('status').not('status', 'in', '(completed,cancelled)'),
     supabase
@@ -137,8 +138,10 @@ export async function getDashboardSummary(fromStr: string = localDateString(), t
     if (r.error) throw r.error
   }
 
-  const sales = (salesRes.data ?? []).filter((s) => s.status === 'completed').reduce((sum, s) => sum + s.total, 0)
+  const completedSales = (salesRes.data ?? []).filter((s) => s.status === 'completed')
+  const sales = completedSales.reduce((sum, s) => sum + s.total, 0)
   const expenses = (expensesRes.data ?? []).filter((e) => !e.is_voided).reduce((sum, e) => sum + e.amount, 0)
+  const cardProcessingFees = completedSales.reduce((sum, s) => sum + s.card_processing_fee, 0)
 
   const jobStatusCounts: Record<string, number> = {}
   for (const j of activeJobsRes.data ?? []) {
@@ -148,7 +151,8 @@ export async function getDashboardSummary(fromStr: string = localDateString(), t
   return {
     sales,
     expenses,
-    net: sales - expenses,
+    cardProcessingFees,
+    net: sales - expenses - cardProcessingFees,
     activeJobsCount: (activeJobsRes.data ?? []).length,
     jobStatusCounts,
     completedCount: completedRes.count ?? 0,

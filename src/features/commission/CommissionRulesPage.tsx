@@ -52,6 +52,9 @@ export function CommissionRulesPage() {
   const [otherRate, setOtherRate] = useState('')
   const [savingPolicy, setSavingPolicy] = useState(false)
 
+  const [cardFeeRate, setCardFeeRate] = useState('')
+  const [savingCardFeeRate, setSavingCardFeeRate] = useState(false)
+
   async function reload() {
     setLoading(true)
     try {
@@ -64,6 +67,7 @@ export function CommissionRulesPage() {
       if (settings) {
         setCarwashRate(String(settings.carwash_commission_rate))
         setOtherRate(String(settings.other_commission_rate))
+        setCardFeeRate(String(settings.card_processing_fee_rate))
       }
 
       const ruleFor = (serviceId: string | null) => rulesData.find((r) => r.service_id === serviceId)
@@ -193,6 +197,24 @@ export function CommissionRulesPage() {
     }
   }
 
+  async function saveCardFeeRate() {
+    if (!profile) return
+    const rate = Number(cardFeeRate)
+    if (Number.isNaN(rate) || rate < 0) {
+      toast.error('Enter a valid rate')
+      return
+    }
+    setSavingCardFeeRate(true)
+    try {
+      await updateSettings(profile.tenantId, { card_processing_fee_rate: rate })
+      toast.success('Saved')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save card processing fee rate')
+    } finally {
+      setSavingCardFeeRate(false)
+    }
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -224,6 +246,28 @@ export function CommissionRulesPage() {
             </div>
             <Button disabled={savingPolicy} onClick={savePolicy}>
               Save policy
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Card processing fee</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <p className="text-sm text-muted-foreground">
+            The cut your card terminal takes on a card payment. The customer still pays the listed price -- this just
+            reduces what counts as revenue for that payment (shown as its own line on the transaction and sales
+            report), and proportionally reduces the crew commission tied to that job.
+          </p>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label>Rate (%)</Label>
+              <Input type="number" step="0.01" min="0" className="w-28" value={cardFeeRate} onChange={(e) => setCardFeeRate(e.target.value)} />
+            </div>
+            <Button disabled={savingCardFeeRate} onClick={saveCardFeeRate}>
+              Save rate
             </Button>
           </div>
         </CardContent>

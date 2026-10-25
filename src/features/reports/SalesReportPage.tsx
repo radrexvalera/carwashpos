@@ -63,7 +63,7 @@ export function SalesReportPage() {
     load(range.from, range.to)
   }
 
-  const net = sales && expenses ? sales.grossSales - expenses.total : 0
+  const net = sales && expenses ? sales.grossSales - expenses.total - sales.cardProcessingFeeTotal : 0
 
   function csvCell(value: string | number) {
     const str = String(value)
@@ -81,6 +81,7 @@ export function SalesReportPage() {
       ['Sale count', String(sales.saleCount)],
       ['Voided sales', String(sales.voidedCount)],
       ['Expenses', expenses.total.toFixed(2)],
+      ['Card processing fees', sales.cardProcessingFeeTotal.toFixed(2)],
       ['Net', net.toFixed(2)],
       ['Discounts given', sales.discountTotal.toFixed(2)],
       ['Promotions given', sales.promotionDiscountTotal.toFixed(2)],
@@ -184,6 +185,12 @@ export function SalesReportPage() {
               <CardContent className="pt-6">
                 <div className="text-sm text-muted-foreground">Cash advances given</div>
                 <div className="text-xl font-semibold">{formatMoney(cashAdvances.total)}</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <div className="text-sm text-muted-foreground">Card processing fees</div>
+                <div className="text-xl font-semibold">{formatMoney(sales.cardProcessingFeeTotal)}</div>
               </CardContent>
             </Card>
           </div>

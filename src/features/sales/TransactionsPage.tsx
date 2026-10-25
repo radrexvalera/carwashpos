@@ -289,6 +289,12 @@ export function TransactionsPage() {
                     <span>Total</span>
                     <span>{formatMoney(detail.total)}</span>
                   </div>
+                  {detail.cardProcessingFee > 0 && (
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>Card processing fee (absorbed by business, not charged to customer)</span>
+                      <span>−{formatMoney(detail.cardProcessingFee)}</span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex flex-col gap-1 border-t pt-2 text-sm">

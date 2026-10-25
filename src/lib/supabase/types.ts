@@ -157,6 +157,7 @@ export interface Database {
           loyalty_redemption_value: number
           carwash_commission_rate: number
           other_commission_rate: number
+          card_processing_fee_rate: number
           onboarding_completed_at: string | null
           logo_url: string | null
           updated_at: string
@@ -177,6 +178,7 @@ export interface Database {
           loyalty_redemption_value?: number
           carwash_commission_rate?: number
           other_commission_rate?: number
+          card_processing_fee_rate?: number
           onboarding_completed_at?: string | null
           logo_url?: string | null
           updated_at?: string
@@ -864,6 +866,7 @@ export interface Database {
           manual_discount_type: 'percentage' | 'fixed' | null
           manual_discount_value: number | null
           manual_discount_amount: number
+          card_processing_fee: number
         }
         Insert: never
         Update: never
