@@ -297,18 +297,25 @@ export function TransactionsPage() {
                   </div>
                   {detail.cardProcessingFee > 0 && (
                     <p className="text-xs text-muted-foreground">
-                      Customer paid {formatMoney(detail.total)} — the fee is absorbed by the business, not charged to them.
+                      The card terminal charged {formatMoney(detail.total)} -- the fee below is deducted by the
+                      processor, not charged to the customer.
                     </p>
                   )}
                 </div>
 
                 <div className="flex flex-col gap-1 border-t pt-2 text-sm">
-                  {detail.payments.map((p, i) => (
-                    <div key={i} className="flex justify-between">
-                      <span>{p.methodLabel}</span>
-                      <span>{formatMoney(p.tenderedAmount ?? p.amount)}</span>
-                    </div>
-                  ))}
+                  {detail.payments.map((p, i) => {
+                    // Shown net of its share of the card fee, same as Total above, so the two
+                    // sections agree on what this sale actually nets the business.
+                    const totalCardAmount = detail.payments.filter((x) => x.method === 'card').reduce((sum, x) => sum + x.amount, 0)
+                    const feeShare = p.method === 'card' && totalCardAmount > 0 ? (p.amount / totalCardAmount) * detail.cardProcessingFee : 0
+                    return (
+                      <div key={i} className="flex justify-between">
+                        <span>{p.methodLabel}</span>
+                        <span>{formatMoney((p.tenderedAmount ?? p.amount) - feeShare)}</span>
+                      </div>
+                    )
+                  })}
                   {detail.payments.some((p) => p.changeGiven) && (
                     <div className="flex justify-between text-muted-foreground">
                       <span>Change</span>

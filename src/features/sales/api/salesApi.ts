@@ -14,7 +14,7 @@ export interface SaleListRow {
 // Manual joins throughout -- this codebase's hand-written types.ts has empty Relationships on
 // every table, so Supabase's embedded-select syntax doesn't type-check here even where it might
 // work at runtime (established pattern, see jobPaymentApi.ts).
-async function buildSaleRows(sales: { id: string; sale_number: string; created_at: string; job_id: string | null; customer_id: string | null; total: number; payment_status: string; status: string }[]): Promise<SaleListRow[]> {
+async function buildSaleRows(sales: { id: string; sale_number: string; created_at: string; job_id: string | null; customer_id: string | null; total: number; card_processing_fee: number; payment_status: string; status: string }[]): Promise<SaleListRow[]> {
   const jobIds = [...new Set(sales.map((s) => s.job_id).filter((id): id is string => !!id))]
   const customerIds = [...new Set(sales.map((s) => s.customer_id).filter((id): id is string => !!id))]
 
@@ -43,7 +43,9 @@ async function buildSaleRows(sales: { id: string; sale_number: string; created_a
     createdAt: s.created_at,
     plateNumber: s.job_id ? (plateByVehicleId.get(vehicleIdByJobId.get(s.job_id) ?? '') ?? null) : null,
     customerName: s.customer_id ? (nameByCustomerId.get(s.customer_id) ?? null) : null,
-    total: s.total,
+    // Net of the card processing fee, same as the transaction detail's own Total -- the list and
+    // the detail dialog must always agree on what "Total" means for a sale.
+    total: s.total - s.card_processing_fee,
     paymentStatus: s.payment_status,
     status: s.status,
   }))
@@ -104,7 +106,7 @@ export interface SaleDetail {
   membershipDiscount: number
   cardProcessingFee: number
   total: number
-  payments: { methodLabel: string; amount: number; tenderedAmount?: number; changeGiven?: number }[]
+  payments: { method: string; methodLabel: string; amount: number; tenderedAmount?: number; changeGiven?: number }[]
 }
 
 const METHOD_LABELS: Record<string, string> = {
@@ -183,6 +185,7 @@ export async function getSaleDetail(saleId: string): Promise<SaleDetail> {
     cardProcessingFee: sale.card_processing_fee,
     total: sale.total,
     payments: (paymentsRes.data ?? []).map((p) => ({
+      method: p.method,
       methodLabel: METHOD_LABELS[p.method] ?? p.method,
       amount: p.amount,
       tenderedAmount: p.tendered_amount ?? undefined,
