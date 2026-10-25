@@ -1424,6 +1424,10 @@ export interface Database {
         Args: { p_job_id: string; p_vehicle_size_id: string }
         Returns: Json
       }
+      cancel_job: {
+        Args: { p_job_id: string; p_reason: string }
+        Returns: Json
+      }
       create_sale: {
         Args: { payload: Json }
         Returns: Json

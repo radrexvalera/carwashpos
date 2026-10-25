@@ -10,11 +10,17 @@ import { getJobCrew, recomputeJobCommission, setJobServiceCrew, type JobCrewLine
 interface EditCrewDialogProps {
   jobId: string | null
   tenantId: string
+  // true (default) for a completed job, where commission was already computed and needs correcting
+  // immediately. A still-open job in the queue hasn't had commission computed at all yet --
+  // complete_job() reads job_service_attendants fresh when it eventually runs, so a crew change
+  // here is picked up automatically with nothing to recompute (and recompute_job_commission() would
+  // just reject it with "job is not completed yet").
+  completed?: boolean
   onOpenChange: (open: boolean) => void
   onSaved: () => void
 }
 
-export function EditCrewDialog({ jobId, tenantId, onOpenChange, onSaved }: EditCrewDialogProps) {
+export function EditCrewDialog({ jobId, tenantId, completed = true, onOpenChange, onSaved }: EditCrewDialogProps) {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [lines, setLines] = useState<JobCrewLine[]>([])
@@ -60,13 +66,17 @@ export function EditCrewDialog({ jobId, tenantId, onOpenChange, onSaved }: EditC
       for (const line of lines) {
         await setJobServiceCrew(tenantId, line.jobServiceId, line.attendantEmployeeIds)
       }
-      const result = await recomputeJobCommission(jobId)
+      if (completed) {
+        const result = await recomputeJobCommission(jobId)
+        toast.success(
+          result.entries_written > 0
+            ? `Crew updated. Commission recomputed at ${result.rate}% (${formatMoney(result.pool)} split ${result.crew_count} way${result.crew_count === 1 ? '' : 's'}).`
+            : 'Crew updated. No commission change needed.',
+        )
+      } else {
+        toast.success('Crew updated.')
+      }
       onSaved()
-      toast.success(
-        result.entries_written > 0
-          ? `Crew updated. Commission recomputed at ${result.rate}% (${formatMoney(result.pool)} split ${result.crew_count} way${result.crew_count === 1 ? '' : 's'}).`
-          : 'Crew updated. No commission change needed.',
-      )
       onOpenChange(false)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to update crew')
@@ -87,7 +97,9 @@ export function EditCrewDialog({ jobId, tenantId, onOpenChange, onSaved }: EditC
         ) : (
           <div className="flex flex-col gap-4">
             <p className="text-sm text-muted-foreground">
-              Changes here recompute this job's commission immediately, even though the job is already completed.
+              {completed
+                ? "Changes here recompute this job's commission immediately, even though the job is already completed."
+                : "Commission for this job is computed automatically once it's marked picked up."}
             </p>
             {lines.map((line, i) => (
               <div key={line.jobServiceId} className="flex flex-col gap-2 rounded-md border p-3">

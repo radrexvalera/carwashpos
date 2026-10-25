@@ -81,3 +81,9 @@ export async function updateJobVehicleSize(jobId: string, vehicleSizeId: string)
   if (error) throw error
   return data as { repriced_count: number; skipped_count: number }
 }
+
+export async function cancelJob(jobId: string, reason: string) {
+  const { data, error } = await supabase.rpc('cancel_job', { p_job_id: jobId, p_reason: reason })
+  if (error) throw error
+  return data as { id: string; status: string }
+}

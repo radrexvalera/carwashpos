@@ -12,7 +12,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { BoardJob, LocalJob } from '@/lib/offline/types'
 import { InspectionDialog } from '@/features/inspections/InspectionDialog'
+import { CancelJobDialog } from './CancelJobDialog'
+import { EditCrewDialog } from './EditCrewDialog'
 import { EditJobDialog } from './EditJobDialog'
+import { refreshJobBoardCache } from './api/jobBoardSync'
 import { retryFailedJob } from './api/jobMutations'
 import { completeJobOffline, updateJobStatus } from './api/jobStatusMutations'
 import { useJobBoardSync } from './hooks/useJobBoardSync'
@@ -61,6 +64,8 @@ export function JobQueuePage() {
 
   const [inspectingJob, setInspectingJob] = useState<BoardJob | null>(null)
   const [editingJobId, setEditingJobId] = useState<string | null>(null)
+  const [editingCrewJobId, setEditingCrewJobId] = useState<string | null>(null)
+  const [cancelingJob, setCancelingJob] = useState<BoardJob | null>(null)
 
   const [, tick] = useState(0)
   useEffect(() => {
@@ -231,17 +236,27 @@ export function JobQueuePage() {
                         Picked up
                       </Button>
                     )}
-                    {!job.isPaid && (
-                      <Button variant="outline" className="w-full" onClick={() => setEditingJobId(job.id)}>
-                        Edit
+                    <div className="flex gap-1.5">
+                      {!job.isPaid && (
+                        <Button variant="outline" className="flex-1" onClick={() => setEditingJobId(job.id)}>
+                          Edit
+                        </Button>
+                      )}
+                      <Button variant="outline" className="flex-1" onClick={() => setEditingCrewJobId(job.id)}>
+                        Edit crew
                       </Button>
-                    )}
+                    </div>
                     {!job.isPaid && (
                       <Link to={`/jobs/${job.id}/pay`}>
                         <Button variant="secondary" className="h-11 w-full text-base">
                           Collect payment
                         </Button>
                       </Link>
+                    )}
+                    {!job.isPaid && (
+                      <Button variant="destructive" className="w-full" onClick={() => setCancelingJob(job)}>
+                        Cancel job
+                      </Button>
                     )}
                   </CardContent>
           </Card>
@@ -340,6 +355,20 @@ export function JobQueuePage() {
 
       {profile && (
         <EditJobDialog jobId={editingJobId} tenantId={profile.tenantId} onOpenChange={(o) => !o && setEditingJobId(null)} />
+      )}
+
+      {profile && (
+        <EditCrewDialog
+          jobId={editingCrewJobId}
+          tenantId={profile.tenantId}
+          completed={false}
+          onOpenChange={(o) => !o && setEditingCrewJobId(null)}
+          onSaved={() => refreshJobBoardCache(profile.tenantId)}
+        />
+      )}
+
+      {profile && (
+        <CancelJobDialog job={cancelingJob} tenantId={profile.tenantId} onOpenChange={(o) => !o && setCancelingJob(null)} />
       )}
     </div>
   )
