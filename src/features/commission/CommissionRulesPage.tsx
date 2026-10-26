@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { useTenant } from '@/app/TenantProvider'
 import { Button } from '@/components/ui/button'
@@ -7,21 +7,25 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { listServices } from '@/features/catalog/api/catalogApi'
+import { listServiceCategories, listServices, listVehicleSizes, type VehicleSize } from '@/features/catalog/api/catalogApi'
 import { getSettings, updateSettings } from '@/features/settings/api/settingsApi'
-import { deleteCommissionRule, listCommissionRules, upsertCommissionRule } from './api/commissionApi'
+import {
+  deleteCommissionRule,
+  listCommissionRules,
+  listCommissionSizes,
+  upsertCommissionRule,
+  upsertCommissionSize,
+} from './api/commissionApi'
 
-type CommissionType = 'fixed_pool' | 'percentage' | 'fixed_per_attendant' | 'points'
+type CommissionType = 'fixed_pool' | 'percentage' | 'fixed_per_attendant' | 'points' | 'fixed_pool_by_size'
 type Basis = 'original_price' | 'discounted_price'
 
-// 'percentage' is no longer selectable here -- crew commission on a job's regular carwash/other
-// services is now the job-composition policy below, applied automatically at job completion.
-// These per-service types are for extra bonuses on top of that (e.g. a fixed pool for a specific
-// premium add-on), not the main commission mechanism anymore.
-const TYPE_LABELS: Record<Exclude<CommissionType, 'percentage'>, string> = {
+const TYPE_LABELS: Record<CommissionType, string> = {
   fixed_pool: 'Fixed pool (₱, split among crew)',
+  percentage: "Percentage of this service's own revenue",
   fixed_per_attendant: 'Fixed ₱ per attendant',
   points: 'Points per attendant',
+  fixed_pool_by_size: 'Fixed ₱ by vehicle size (e.g. PPF)',
 }
 
 interface RowState {
@@ -34,11 +38,22 @@ interface RowState {
   basis: Basis
 }
 
+// Wash is always the fixed carwash rate (set in the policy card above) -- no per-service override
+// makes sense for it, so only the "bonus on top" types are offered. The tenant-wide default row
+// (no specific service) also can't use 'percentage' (settings.other_commission_rate already covers
+// that) or 'fixed_pool_by_size' (needs one specific service to pair with a size table).
+function availableTypesFor(row: RowState, isCarwash: (serviceId: string) => boolean): CommissionType[] {
+  if (row.serviceId === null) return ['fixed_pool', 'fixed_per_attendant', 'points']
+  if (isCarwash(row.serviceId)) return ['fixed_pool', 'fixed_per_attendant', 'points']
+  return ['fixed_pool', 'percentage', 'fixed_per_attendant', 'points', 'fixed_pool_by_size']
+}
+
 function describeRule(type: CommissionType, rate: string) {
+  if (type === 'fixed_pool_by_size') return 'Fixed amount by vehicle size (set below)'
   if (!rate) return 'No bonus configured'
-  if (type === 'percentage') return `${rate}% (legacy, no longer applied)`
+  if (type === 'percentage') return `${rate}%`
   const unit = type === 'points' ? `${rate} pts` : `₱${rate}`
-  return `${TYPE_LABELS[type as Exclude<CommissionType, 'percentage'>] ?? type} — ${unit}`
+  return `${TYPE_LABELS[type]} — ${unit}`
 }
 
 export function CommissionRulesPage() {
@@ -47,6 +62,13 @@ export function CommissionRulesPage() {
   const [loading, setLoading] = useState(true)
   const [savingKey, setSavingKey] = useState<string | null>(null)
   const [overridingKeys, setOverridingKeys] = useState<Set<string>>(new Set())
+  const [carwashServiceIds, setCarwashServiceIds] = useState<Set<string>>(new Set())
+  const isCarwash = (serviceId: string) => carwashServiceIds.has(serviceId)
+
+  const [vehicleSizes, setVehicleSizes] = useState<VehicleSize[]>([])
+  // serviceId -> vehicleSizeId -> amount (string, as typed in the input)
+  const [sizeAmounts, setSizeAmounts] = useState<Record<string, Record<string, string>>>({})
+  const [savingSizesKey, setSavingSizesKey] = useState<string | null>(null)
 
   const [carwashRate, setCarwashRate] = useState('')
   const [otherRate, setOtherRate] = useState('')
@@ -58,9 +80,11 @@ export function CommissionRulesPage() {
   async function reload() {
     setLoading(true)
     try {
-      const [servicesData, rulesData, settings] = await Promise.all([
+      const [servicesData, categoriesData, rulesData, sizesData, settings] = await Promise.all([
         listServices(),
+        listServiceCategories(),
         listCommissionRules(),
+        listVehicleSizes(),
         profile ? getSettings(profile.tenantId) : Promise.resolve(null),
       ])
 
@@ -70,12 +94,21 @@ export function CommissionRulesPage() {
         setCardFeeRate(String(settings.card_processing_fee_rate))
       }
 
+      setVehicleSizes(sizesData.filter((s) => s.is_active))
+
+      const carwashCategoryIds = new Set(categoriesData.filter((c) => c.is_carwash).map((c) => c.id))
+      setCarwashServiceIds(new Set(servicesData.filter((s) => s.category_id && carwashCategoryIds.has(s.category_id)).map((s) => s.id)))
+
       const ruleFor = (serviceId: string | null) => rulesData.find((r) => r.service_id === serviceId)
-      // A legacy 'percentage' rule from before this rule type was retired displays as an unset
-      // fixed pool rather than a dead selection -- the manager has to consciously pick a new
-      // method and rate rather than accidentally re-saving a now-meaningless percentage as one.
-      const displayType = (type: string | undefined): CommissionType => (type && type !== 'percentage' ? (type as CommissionType) : 'fixed_pool')
-      const displayRate = (r: { commission_type: string; rate: number } | undefined) => (r && r.commission_type !== 'percentage' ? String(r.rate) : '')
+      // The default row can't use 'percentage' or 'fixed_pool_by_size' (see availableTypesFor) --
+      // a legacy row stuck on one of those (from before this was enforced) displays as an unset
+      // fixed pool rather than a dead selection, so a save has to consciously pick a real method.
+      const displayType = (serviceId: string | null, type: string | undefined): CommissionType => {
+        if (!type) return 'fixed_pool'
+        if (serviceId === null && (type === 'percentage' || type === 'fixed_pool_by_size')) return 'fixed_pool'
+        return type as CommissionType
+      }
+      const displayRate = (r: { commission_type: string; rate: number } | undefined) => (r ? String(r.rate) : '')
 
       const defaultRule = ruleFor(null)
       const newRows: RowState[] = [
@@ -84,7 +117,7 @@ export function CommissionRulesPage() {
           ruleId: defaultRule?.id ?? null,
           hasOwnRule: true,
           label: 'Default (all other services)',
-          type: displayType(defaultRule?.commission_type),
+          type: displayType(null, defaultRule?.commission_type),
           rate: displayRate(defaultRule),
           basis: (defaultRule?.basis as Basis) ?? 'discounted_price',
         },
@@ -97,7 +130,7 @@ export function CommissionRulesPage() {
               ruleId: r?.id ?? null,
               hasOwnRule: !!r,
               label: s.name,
-              type: displayType(r?.commission_type),
+              type: displayType(s.id, r?.commission_type),
               rate: displayRate(r),
               basis: (r?.basis as Basis) ?? 'discounted_price',
             }
@@ -111,10 +144,28 @@ export function CommissionRulesPage() {
         for (const r of newRows) if (r.serviceId && r.hasOwnRule) next.add(r.serviceId)
         return next
       })
+
+      // Preload size amounts for any row already using fixed_pool_by_size, so they show immediately
+      // instead of only after the manager touches that row.
+      for (const r of newRows) {
+        if (r.serviceId && r.type === 'fixed_pool_by_size') void loadSizesForService(r.serviceId)
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to load commission rules')
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function loadSizesForService(serviceId: string) {
+    try {
+      const sizes = await listCommissionSizes(serviceId)
+      setSizeAmounts((prev) => ({
+        ...prev,
+        [serviceId]: Object.fromEntries(sizes.map((s) => [s.vehicle_size_id, String(s.amount)])),
+      }))
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to load vehicle-size amounts')
     }
   }
 
@@ -129,7 +180,9 @@ export function CommissionRulesPage() {
 
   async function saveRow(row: RowState) {
     if (!profile) return
-    const rate = Number(row.rate)
+    // Rate is meaningless for fixed_pool_by_size (the per-size table below is the real config) --
+    // stored as 0 rather than left unset, since the column doesn't allow null.
+    const rate = row.type === 'fixed_pool_by_size' ? 0 : Number(row.rate)
     if (Number.isNaN(rate) || rate < 0) {
       toast.error('Enter a valid rate')
       return
@@ -150,6 +203,29 @@ export function CommissionRulesPage() {
       toast.error(err instanceof Error ? err.message : 'Failed to save rule')
     } finally {
       setSavingKey(null)
+    }
+  }
+
+  async function saveSizes(row: RowState) {
+    if (!profile || !row.serviceId) return
+    const amounts = sizeAmounts[row.serviceId] ?? {}
+    setSavingSizesKey(row.serviceId)
+    try {
+      for (const size of vehicleSizes) {
+        const raw = amounts[size.id]
+        if (raw === undefined || raw === '') continue
+        const amount = Number(raw)
+        if (Number.isNaN(amount) || amount < 0) {
+          toast.error(`Enter a valid amount for ${size.name}`)
+          continue
+        }
+        await upsertCommissionSize({ tenantId: profile.tenantId, serviceId: row.serviceId, vehicleSizeId: size.id, amount })
+      }
+      toast.success('Saved')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save vehicle-size amounts')
+    } finally {
+      setSavingSizesKey(null)
     }
   }
 
@@ -220,8 +296,8 @@ export function CommissionRulesPage() {
       <div>
         <h1 className="text-2xl font-semibold">Commission Rules</h1>
         <p className="text-muted-foreground">
-          Crew commission on regular services is set by the policy below, based on job composition. The per-service
-          table further down is only for extra bonuses on specific services, on top of that.
+          Wash services always earn the fixed Wash rate below. Any other service earns the "other" rate below, unless
+          you've set its own rate (or a fixed amount by vehicle size) in the table further down.
         </p>
       </div>
 
@@ -231,9 +307,10 @@ export function CommissionRulesPage() {
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-sm text-muted-foreground">
-            When a job is completed, its total revenue earns one of these rates, split evenly among every crew member
-            assigned anywhere on the job. Which services count as "carwash" is set per category on the Service
-            Categories page.
+            When a job is completed, each service earns commission off its own revenue -- Wash services at the fixed
+            rate on the left, every other service at the rate on the right (unless overridden below). Those amounts
+            are added together into one pool, split evenly among every crew member assigned anywhere on the job.
+            Which services count as "Wash" is set per category on the Service Categories page.
           </p>
           <div className="flex flex-wrap items-end gap-3">
             <div className="flex flex-col gap-1.5">
@@ -275,9 +352,14 @@ export function CommissionRulesPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Per-service bonuses</CardTitle>
+          <CardTitle className="text-base">Per-service overrides</CardTitle>
         </CardHeader>
         <CardContent className="pt-0">
+          <p className="mb-3 text-sm text-muted-foreground">
+            Wash services always earn the fixed Wash rate above -- only bonus types are offered for them. Any other
+            service can instead earn its own percentage (overriding the default "other" rate), or a fixed ₱ amount
+            that varies by vehicle size (e.g. PPF).
+          </p>
           {loading ? (
             <p className="text-muted-foreground">Loading…</p>
           ) : (
@@ -314,47 +396,92 @@ export function CommissionRulesPage() {
                       )
                     }
 
+                    const options = availableTypesFor(row, isCarwash)
+                    const isBySize = row.type === 'fixed_pool_by_size'
+
                     return (
-                      <TableRow key={key}>
-                        <TableCell className={isDefault ? 'font-medium' : ''}>{row.label}</TableCell>
-                        <TableCell>
-                          <Select value={row.type} onValueChange={(v) => updateRow(key, { type: v as CommissionType })}>
-                            <SelectTrigger className="w-64">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {Object.entries(TYPE_LABELS).map(([value, label]) => (
-                                <SelectItem key={value} value={value}>
-                                  {label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            className="w-28"
-                            value={row.rate}
-                            onChange={(e) => updateRow(key, { rate: e.target.value })}
-                            placeholder="₱"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-2">
-                            <Button size="sm" disabled={savingKey === key || !row.rate} onClick={() => saveRow(row)}>
-                              Save
-                            </Button>
-                            {!isDefault && row.hasOwnRule && (
-                              <Button size="sm" variant="ghost" onClick={() => removeOverride(row)}>
-                                Revert to default
-                              </Button>
+                      <Fragment key={key}>
+                        <TableRow>
+                          <TableCell className={isDefault ? 'font-medium' : ''}>{row.label}</TableCell>
+                          <TableCell>
+                            <Select
+                              value={row.type}
+                              onValueChange={(v) => {
+                                updateRow(key, { type: v as CommissionType })
+                                if (v === 'fixed_pool_by_size' && row.serviceId) void loadSizesForService(row.serviceId)
+                              }}
+                            >
+                              <SelectTrigger className="w-64">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {options.map((value) => (
+                                  <SelectItem key={value} value={value}>
+                                    {TYPE_LABELS[value]}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </TableCell>
+                          <TableCell>
+                            {isBySize ? (
+                              <span className="text-xs text-muted-foreground">Set below</span>
+                            ) : (
+                              <Input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                className="w-28"
+                                value={row.rate}
+                                onChange={(e) => updateRow(key, { rate: e.target.value })}
+                                placeholder="₱"
+                              />
                             )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex gap-2">
+                              <Button size="sm" disabled={savingKey === key || (!isBySize && !row.rate)} onClick={() => saveRow(row)}>
+                                Save
+                              </Button>
+                              {!isDefault && row.hasOwnRule && (
+                                <Button size="sm" variant="ghost" onClick={() => removeOverride(row)}>
+                                  Revert to default
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                        {isBySize && row.serviceId && (
+                          <TableRow>
+                            <TableCell colSpan={4} className="bg-muted/30">
+                              <div className="flex flex-wrap items-end gap-3 py-1">
+                                {vehicleSizes.map((size) => (
+                                  <div key={size.id} className="flex flex-col gap-1.5">
+                                    <Label className="text-xs">{size.name}</Label>
+                                    <Input
+                                      type="number"
+                                      step="0.01"
+                                      min="0"
+                                      className="w-24"
+                                      placeholder="₱"
+                                      value={sizeAmounts[row.serviceId!]?.[size.id] ?? ''}
+                                      onChange={(e) =>
+                                        setSizeAmounts((prev) => ({
+                                          ...prev,
+                                          [row.serviceId!]: { ...prev[row.serviceId!], [size.id]: e.target.value },
+                                        }))
+                                      }
+                                    />
+                                  </div>
+                                ))}
+                                <Button size="sm" disabled={savingSizesKey === row.serviceId} onClick={() => saveSizes(row)}>
+                                  Save sizes
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </Fragment>
                     )
                   })
                 })()}

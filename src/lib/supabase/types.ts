@@ -913,7 +913,7 @@ export interface Database {
           id: string
           tenant_id: string
           service_id: string | null
-          commission_type: 'fixed_pool' | 'percentage' | 'fixed_per_attendant' | 'points'
+          commission_type: 'fixed_pool' | 'percentage' | 'fixed_per_attendant' | 'points' | 'fixed_pool_by_size'
           rate: number
           basis: 'original_price' | 'discounted_price'
           is_active: boolean
@@ -923,13 +923,35 @@ export interface Database {
           id?: string
           tenant_id: string
           service_id?: string | null
-          commission_type: 'fixed_pool' | 'percentage' | 'fixed_per_attendant' | 'points'
+          commission_type: 'fixed_pool' | 'percentage' | 'fixed_per_attendant' | 'points' | 'fixed_pool_by_size'
           rate: number
           basis?: 'original_price' | 'discounted_price'
           is_active?: boolean
           created_at?: string
         }
         Update: Partial<Database['public']['Tables']['service_commission_rules']['Insert']>
+        Relationships: []
+      }
+      service_commission_sizes: {
+        Row: {
+          id: string
+          tenant_id: string
+          service_id: string
+          vehicle_size_id: string
+          amount: number
+          is_active: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          service_id: string
+          vehicle_size_id: string
+          amount: number
+          is_active?: boolean
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['service_commission_sizes']['Insert']>
         Relationships: []
       }
       commission_ledger: {
