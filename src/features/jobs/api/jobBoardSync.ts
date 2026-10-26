@@ -2,6 +2,21 @@ import { db } from '@/lib/db/dexie'
 import { supabase } from '@/lib/supabase/client'
 import type { BoardJob, CachedJobServiceLine } from '@/lib/offline/types'
 
+// Picked-up jobs that never got a sale. They leave the open board on completion (the board only
+// loads open statuses, below), so without this list an unpaid pickup had no way back to Collect
+// Payment. Live read only, not cached -- collecting payment for one needs a connection anyway,
+// since getJobForPaymentOffline() only knows about jobs still on the open board.
+export async function listUnpaidPickedUpJobs() {
+  const { data, error } = await supabase
+    .from('job_board_entries')
+    .select('id, job_number, plate_number, vehicle_make, vehicle_model, vehicle_size_name, services_summary, attendants_summary, estimated_total, completed_at')
+    .eq('status', 'completed')
+    .eq('is_paid', false)
+    .order('completed_at', { ascending: true })
+  if (error) throw error
+  return data ?? []
+}
+
 // Pulls the full open-job board from job_board_entries and replaces the local cache. Full refetch
 // (not per-row patching) is simple and cheap at v1 scale, same choice made for the ticket board.
 export async function refreshJobBoardCache(tenantId: string) {

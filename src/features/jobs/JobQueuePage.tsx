@@ -15,7 +15,8 @@ import { InspectionDialog } from '@/features/inspections/InspectionDialog'
 import { CancelJobDialog } from './CancelJobDialog'
 import { EditCrewDialog } from './EditCrewDialog'
 import { EditJobDialog } from './EditJobDialog'
-import { refreshJobBoardCache } from './api/jobBoardSync'
+import { useOnlineStatus } from '@/lib/offline/useOnlineStatus'
+import { listUnpaidPickedUpJobs, refreshJobBoardCache } from './api/jobBoardSync'
 import { retryFailedJob } from './api/jobMutations'
 import { completeJobOffline, updateJobStatus } from './api/jobStatusMutations'
 import { useJobBoardSync } from './hooks/useJobBoardSync'
@@ -66,6 +67,20 @@ export function JobQueuePage() {
   const [editingJobId, setEditingJobId] = useState<string | null>(null)
   const [editingCrewJobId, setEditingCrewJobId] = useState<string | null>(null)
   const [cancelingJob, setCancelingJob] = useState<BoardJob | null>(null)
+
+  const online = useOnlineStatus()
+  const [unpaidJobs, setUnpaidJobs] = useState<Awaited<ReturnType<typeof listUnpaidPickedUpJobs>>>([])
+  // Re-read whenever the board cache changes (poll/Realtime refresh, or a job just picked up) so
+  // a fresh pickup shows up here without a manual refresh.
+  useEffect(() => {
+    if (!online) return
+    listUnpaidPickedUpJobs()
+      .then(setUnpaidJobs)
+      .catch((err) => console.error('Unpaid jobs refresh failed', err))
+  }, [boardJobs, online])
+  // A payment queued offline already marks the job paid locally -- hide it here too so it can't
+  // be collected twice while that sale is still syncing.
+  const visibleUnpaidJobs = unpaidJobs.filter((j) => !queuedPaymentJobIds.has(j.id))
 
   const [, tick] = useState(0)
   useEffect(() => {
@@ -276,6 +291,10 @@ export function JobQueuePage() {
         <TabsList>
           <TabsTrigger value="queue">Queue</TabsTrigger>
           <TabsTrigger value="bays">Bays</TabsTrigger>
+          <TabsTrigger value="unpaid">
+            Unpaid
+            {visibleUnpaidJobs.length > 0 && <Badge variant="destructive">{visibleUnpaidJobs.length}</Badge>}
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="queue" className="flex flex-col gap-4 pt-2">
@@ -341,6 +360,50 @@ export function JobQueuePage() {
               )
             })}
           </div>
+        </TabsContent>
+
+        <TabsContent value="unpaid" className="flex flex-col gap-4 pt-2">
+          <p className="text-sm text-muted-foreground">Picked up but not paid yet. Collect payment to record the sale.</p>
+          {!online ? (
+            <p className="text-sm text-muted-foreground">Needs a connection. Reconnect to see unpaid pickups.</p>
+          ) : visibleUnpaidJobs.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No unpaid pickups.</p>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {visibleUnpaidJobs.map((job) => (
+                <Card key={job.id} className="gap-2 py-3">
+                  <CardHeader className="gap-1 px-3">
+                    <CardTitle className="flex items-center justify-between text-xs">
+                      <span>#{job.job_number.slice(-4)}</span>
+                      <Badge variant="secondary">Unpaid</Badge>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="flex flex-col gap-1 px-3 text-xs">
+                    <div className="font-medium">
+                      {job.plate_number} · {job.vehicle_size_name}
+                    </div>
+                    <div className="text-muted-foreground">
+                      {job.vehicle_make} {job.vehicle_model}
+                    </div>
+                    <div className="text-muted-foreground">{job.services_summary}</div>
+                    {job.attendants_summary && <div className="text-muted-foreground">Crew: {job.attendants_summary}</div>}
+                    <div className="font-medium">{formatMoney(job.estimated_total)}</div>
+                    {job.completed_at && (
+                      <div className="text-muted-foreground">
+                        Picked up{' '}
+                        {new Date(job.completed_at).toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                      </div>
+                    )}
+                    <Link to={`/jobs/${job.id}/pay`}>
+                      <Button variant="secondary" className="h-11 w-full text-base">
+                        Collect payment
+                      </Button>
+                    </Link>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
         </TabsContent>
       </Tabs>
 
