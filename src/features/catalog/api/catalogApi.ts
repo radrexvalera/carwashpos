@@ -105,16 +105,14 @@ export async function updateService(
     defaultDurationMinutes: number | null
   },
 ) {
-  const { error } = await supabase
-    .from('services')
-    .update({
-      name: input.name,
-      category_id: input.categoryId,
-      pricing_type: input.pricingType,
-      flat_price: input.flatPrice,
-      default_duration_minutes: input.defaultDurationMinutes,
-    })
-    .eq('id', id)
+  const { error } = await supabase.rpc('update_service', {
+    p_service_id: id,
+    p_name: input.name,
+    p_category_id: input.categoryId,
+    p_pricing_type: input.pricingType,
+    p_flat_price: input.flatPrice,
+    p_default_duration_minutes: input.defaultDurationMinutes,
+  })
   if (error) throw error
 }
 

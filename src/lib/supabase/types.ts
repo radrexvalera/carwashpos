@@ -1529,6 +1529,17 @@ export interface Database {
         Args: { p_service_id: string }
         Returns: Json
       }
+      update_service: {
+        Args: {
+          p_service_id: string
+          p_name: string
+          p_category_id: string | null
+          p_pricing_type: string
+          p_flat_price: number | null
+          p_default_duration_minutes: number | null
+        }
+        Returns: Json
+      }
       recompute_job_commission: {
         Args: { p_job_id: string }
         Returns: Json

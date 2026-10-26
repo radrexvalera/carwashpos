@@ -13,6 +13,19 @@ import { createService, deleteService, listServiceCategories, listServices, setS
 
 type PricingType = 'matrix' | 'flat' | 'starting_at' | 'quoted'
 
+// A Postgrest/RPC error IS an Error instance in practice, but this is defensive against anything
+// that logs a real .message without being one (e.g. an object that lost its prototype chain
+// crossing a serialization boundary) -- better than silently falling back to a useless generic
+// string when there's a real, specific message sitting right there.
+function errorMessage(err: unknown, fallback: string): string {
+  if (err instanceof Error) return err.message
+  if (err && typeof err === 'object' && 'message' in err && typeof (err as { message: unknown }).message === 'string') {
+    return (err as { message: string }).message
+  }
+  console.error(err)
+  return fallback
+}
+
 const PRICING_TYPE_LABELS: Record<PricingType, string> = {
   matrix: 'By vehicle size (set under Pricing)',
   flat: 'Flat price',
@@ -45,7 +58,7 @@ export function ServicesPage() {
       setServices(servicesData)
       setCategories(categoriesData)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to load services')
+      toast.error(errorMessage(err, 'Failed to load services'))
     } finally {
       setLoading(false)
     }
@@ -72,7 +85,7 @@ export function ServicesPage() {
       setDuration('')
       await reload()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to create service')
+      toast.error(errorMessage(err, 'Failed to create service'))
     } finally {
       setSubmitting(false)
     }
@@ -83,7 +96,7 @@ export function ServicesPage() {
       await setServiceActive(row.id, !row.is_active)
       await reload()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to update service')
+      toast.error(errorMessage(err, 'Failed to update service'))
     }
   }
 
@@ -94,7 +107,7 @@ export function ServicesPage() {
       await reload()
       toast.success('Service deleted')
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to delete service')
+      toast.error(errorMessage(err, 'Failed to delete service'))
     }
   }
 
@@ -123,7 +136,7 @@ export function ServicesPage() {
       setEditingService(null)
       await reload()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to save service')
+      toast.error(errorMessage(err, 'Failed to save service'))
     } finally {
       setEditSubmitting(false)
     }
