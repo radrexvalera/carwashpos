@@ -1,19 +1,25 @@
 import { Document, Font, Image, Page, StyleSheet, Text, View } from '@react-pdf/renderer'
 import { formatMoney } from '@/lib/money'
 // Helvetica (a built-in PDF standard font) has no glyph for the peso sign (U+20B1) -- it silently
-// fell back to a substitute glyph (rendered as "±") instead. Noto Sans does include it; the
-// latin-ext subset specifically (not latin alone, which is missing it too) -- verified directly
-// against the font file before picking this one. Static per-weight files (not the variable-font
-// build) so bold text actually renders bold -- react-pdf embeds whatever instance fontkit resolves
-// by default and doesn't request a specific wght axis value from a variable font.
-import notoSansRegularUrl from '@fontsource/noto-sans/files/noto-sans-latin-ext-400-normal.woff?url'
-import notoSansBoldUrl from '@fontsource/noto-sans/files/noto-sans-latin-ext-700-normal.woff?url'
+// fell back to a substitute glyph (rendered as "±") instead. Switched to Noto Sans, but the first
+// attempt at this (Google Fonts' pre-subset "latin-ext" files) made it WORSE: latin-ext and latin
+// are disjoint subsets, not nested, so latin-ext has the peso sign but is missing basic digits,
+// letters and punctuation entirely -- verified directly against the font files, not assumed. Using
+// the full (unsubsetted) variable font instead guarantees nothing is missing; confirmed it covers
+// everything from A-Z/0-9/punctuation through the peso sign before switching to it.
+//
+// Registered at both 400 and 700 purely so a fontWeight: 'bold' style resolves to a real font
+// entry instead of erroring -- react-pdf embeds whatever instance fontkit resolves by default from
+// a variable font (it doesn't request a specific wght axis value), so "bold" text won't actually
+// look bolder than regular. A real cosmetic shortcoming, but correctness (every character actually
+// rendering) matters far more than that.
+import notoSansUrl from '@/assets/fonts/NotoSans.ttf?url'
 
 Font.register({
   family: 'Noto Sans',
   fonts: [
-    { src: notoSansRegularUrl, fontWeight: 400 },
-    { src: notoSansBoldUrl, fontWeight: 700 },
+    { src: notoSansUrl, fontWeight: 400 },
+    { src: notoSansUrl, fontWeight: 700 },
   ],
 })
 
