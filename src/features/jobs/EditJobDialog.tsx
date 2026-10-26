@@ -17,14 +17,24 @@ import {
   type JobEditLine,
 } from './api/jobEditApi'
 import { refreshJobBoardCache } from './api/jobBoardSync'
+import { recomputeJobCommission } from './api/jobCrewApi'
 
 interface EditJobDialogProps {
   jobId: string | null
   tenantId: string
+  // true for a job that's already been picked up (completed) but not paid yet -- job_is_editable()
+  // allows this as long as no sale exists, but unlike a still-open job, this one already has
+  // commission on the books from complete_job(), computed off the pre-edit total. Recompute it
+  // after every change so it never goes stale, same as EditCrewDialog does for a crew correction.
+  completed?: boolean
   onOpenChange: (open: boolean) => void
+  // Fired after every successful change -- refreshJobBoardCache() alone doesn't cover a completed
+  // job (the open board only loads waiting/ongoing/ready_for_release), so a caller showing a
+  // completed job elsewhere (the Unpaid tab) needs its own hook to refetch that list.
+  onSaved?: () => void
 }
 
-export function EditJobDialog({ jobId, tenantId, onOpenChange }: EditJobDialogProps) {
+export function EditJobDialog({ jobId, tenantId, completed = false, onOpenChange, onSaved }: EditJobDialogProps) {
   const [loading, setLoading] = useState(false)
   const [lines, setLines] = useState<JobEditLine[]>([])
   const [vehicleSizeId, setVehicleSizeId] = useState('')
@@ -69,6 +79,15 @@ export function EditJobDialog({ jobId, tenantId, onOpenChange }: EditJobDialogPr
   const pickedService = services.find((s) => s.id === pickedServiceId)
   const total = lines.reduce((sum, l) => sum + l.lineTotal, 0)
 
+  async function recomputeIfCompleted() {
+    if (!completed || !jobId) return
+    try {
+      await recomputeJobCommission(jobId)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to recompute commission after this change')
+    }
+  }
+
   async function handleAddService() {
     if (!jobId || !pickedServiceId || !pickedService) return
     const quantity = Number(pickedQuantity) || 1
@@ -82,6 +101,8 @@ export function EditJobDialog({ jobId, tenantId, onOpenChange }: EditJobDialogPr
       setPickedManualPrice('')
       load()
       await refreshJobBoardCache(tenantId)
+      await recomputeIfCompleted()
+      onSaved?.()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to add service')
     } finally {
@@ -96,6 +117,8 @@ export function EditJobDialog({ jobId, tenantId, onOpenChange }: EditJobDialogPr
       setLines((prev) => prev.filter((l) => l.id !== line.id))
       toast.success('Removed')
       await refreshJobBoardCache(tenantId)
+      await recomputeIfCompleted()
+      onSaved?.()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to remove service')
     } finally {
@@ -111,6 +134,8 @@ export function EditJobDialog({ jobId, tenantId, onOpenChange }: EditJobDialogPr
       const result = await updateJobServiceQuantity(line.id, quantity)
       setLines((prev) => prev.map((l) => (l.id === line.id ? { ...l, quantity: result.quantity, lineTotal: result.line_total } : l)))
       await refreshJobBoardCache(tenantId)
+      await recomputeIfCompleted()
+      onSaved?.()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to update quantity')
       load()
@@ -130,6 +155,8 @@ export function EditJobDialog({ jobId, tenantId, onOpenChange }: EditJobDialogPr
       )
       load()
       await refreshJobBoardCache(tenantId)
+      await recomputeIfCompleted()
+      onSaved?.()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to update vehicle size')
       load()

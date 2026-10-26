@@ -65,19 +65,23 @@ export function JobQueuePage() {
 
   const [inspectingJob, setInspectingJob] = useState<BoardJob | null>(null)
   const [editingJobId, setEditingJobId] = useState<string | null>(null)
+  // Whether editingJobId refers to an already-picked-up (completed) job -- EditJobDialog needs to
+  // know so it can recompute commission after a change, since a still-open job has none yet.
+  const [editingJobCompleted, setEditingJobCompleted] = useState(false)
   const [editingCrewJobId, setEditingCrewJobId] = useState<string | null>(null)
   const [cancelingJob, setCancelingJob] = useState<BoardJob | null>(null)
 
   const online = useOnlineStatus()
   const [unpaidJobs, setUnpaidJobs] = useState<Awaited<ReturnType<typeof listUnpaidPickedUpJobs>>>([])
-  // Re-read whenever the board cache changes (poll/Realtime refresh, or a job just picked up) so
-  // a fresh pickup shows up here without a manual refresh.
-  useEffect(() => {
+  function reloadUnpaidJobs() {
     if (!online) return
     listUnpaidPickedUpJobs()
       .then(setUnpaidJobs)
       .catch((err) => console.error('Unpaid jobs refresh failed', err))
-  }, [boardJobs, online])
+  }
+  // Re-read whenever the board cache changes (poll/Realtime refresh, or a job just picked up) so
+  // a fresh pickup shows up here without a manual refresh.
+  useEffect(reloadUnpaidJobs, [boardJobs, online])
   // A payment queued offline already marks the job paid locally -- hide it here too so it can't
   // be collected twice while that sale is still syncing.
   const visibleUnpaidJobs = unpaidJobs.filter((j) => !queuedPaymentJobIds.has(j.id))
@@ -253,7 +257,14 @@ export function JobQueuePage() {
                     )}
                     <div className="flex gap-1.5">
                       {!job.isPaid && (
-                        <Button variant="outline" className="flex-1" onClick={() => setEditingJobId(job.id)}>
+                        <Button
+                          variant="outline"
+                          className="flex-1"
+                          onClick={() => {
+                            setEditingJobId(job.id)
+                            setEditingJobCompleted(false)
+                          }}
+                        >
                           Edit
                         </Button>
                       )}
@@ -394,6 +405,16 @@ export function JobQueuePage() {
                         {new Date(job.completed_at).toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
                       </div>
                     )}
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => {
+                        setEditingJobId(job.id)
+                        setEditingJobCompleted(true)
+                      }}
+                    >
+                      Edit
+                    </Button>
                     <Link to={`/jobs/${job.id}/pay`}>
                       <Button variant="secondary" className="h-11 w-full text-base">
                         Collect payment
@@ -417,7 +438,13 @@ export function JobQueuePage() {
       )}
 
       {profile && (
-        <EditJobDialog jobId={editingJobId} tenantId={profile.tenantId} onOpenChange={(o) => !o && setEditingJobId(null)} />
+        <EditJobDialog
+          jobId={editingJobId}
+          tenantId={profile.tenantId}
+          completed={editingJobCompleted}
+          onOpenChange={(o) => !o && setEditingJobId(null)}
+          onSaved={editingJobCompleted ? reloadUnpaidJobs : undefined}
+        />
       )}
 
       {profile && (
