@@ -1525,6 +1525,10 @@ export interface Database {
         Args: { p_bay_id: string }
         Returns: Json
       }
+      delete_service: {
+        Args: { p_service_id: string }
+        Returns: Json
+      }
       recompute_job_commission: {
         Args: { p_job_id: string }
         Returns: Json

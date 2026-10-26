@@ -90,6 +90,11 @@ export async function setServiceActive(id: string, isActive: boolean) {
   if (error) throw error
 }
 
+export async function deleteService(id: string) {
+  const { error } = await supabase.rpc('delete_service', { p_service_id: id })
+  if (error) throw error
+}
+
 export async function updateService(
   id: string,
   input: {

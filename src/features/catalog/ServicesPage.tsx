@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { createService, listServiceCategories, listServices, setServiceActive, updateService, type Service, type ServiceCategory } from './api/catalogApi'
+import { createService, deleteService, listServiceCategories, listServices, setServiceActive, updateService, type Service, type ServiceCategory } from './api/catalogApi'
 
 type PricingType = 'matrix' | 'flat' | 'starting_at' | 'quoted'
 
@@ -84,6 +84,17 @@ export function ServicesPage() {
       await reload()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to update service')
+    }
+  }
+
+  async function handleDelete(row: Service) {
+    if (!window.confirm(`Delete ${row.name}? This can't be undone.`)) return
+    try {
+      await deleteService(row.id)
+      await reload()
+      toast.success('Service deleted')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete service')
     }
   }
 
@@ -200,9 +211,14 @@ export function ServicesPage() {
                     <Switch checked={row.is_active} onCheckedChange={() => toggleActive(row)} />
                   </TableCell>
                   <TableCell>
-                    <Button size="sm" variant="outline" onClick={() => openEdit(row)}>
-                      Edit
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" onClick={() => openEdit(row)}>
+                        Edit
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => handleDelete(row)}>
+                        Delete
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
