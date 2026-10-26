@@ -90,6 +90,29 @@ export async function setServiceActive(id: string, isActive: boolean) {
   if (error) throw error
 }
 
+export async function updateService(
+  id: string,
+  input: {
+    name: string
+    categoryId: string | null
+    pricingType: 'matrix' | 'flat' | 'starting_at' | 'quoted'
+    flatPrice: number | null
+    defaultDurationMinutes: number | null
+  },
+) {
+  const { error } = await supabase
+    .from('services')
+    .update({
+      name: input.name,
+      category_id: input.categoryId,
+      pricing_type: input.pricingType,
+      flat_price: input.flatPrice,
+      default_duration_minutes: input.defaultDurationMinutes,
+    })
+    .eq('id', id)
+  if (error) throw error
+}
+
 export async function listServicePrices() {
   const { data, error } = await supabase.from('service_prices').select('*')
   if (error) throw error

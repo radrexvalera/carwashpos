@@ -3,12 +3,22 @@ import { toast } from 'sonner'
 import { useTenant } from '@/app/TenantProvider'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { createService, listServiceCategories, listServices, setServiceActive, type Service, type ServiceCategory } from './api/catalogApi'
+import { createService, listServiceCategories, listServices, setServiceActive, updateService, type Service, type ServiceCategory } from './api/catalogApi'
+
+type PricingType = 'matrix' | 'flat' | 'starting_at' | 'quoted'
+
+const PRICING_TYPE_LABELS: Record<PricingType, string> = {
+  matrix: 'By vehicle size (set under Pricing)',
+  flat: 'Flat price',
+  starting_at: 'Starting at (flat, shown as "from")',
+  quoted: 'Quoted manually at checkout',
+}
 
 export function ServicesPage() {
   const { profile } = useTenant()
@@ -19,6 +29,14 @@ export function ServicesPage() {
   const [categoryId, setCategoryId] = useState<string>('')
   const [duration, setDuration] = useState('')
   const [submitting, setSubmitting] = useState(false)
+
+  const [editingService, setEditingService] = useState<Service | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editCategoryId, setEditCategoryId] = useState('')
+  const [editPricingType, setEditPricingType] = useState<PricingType>('matrix')
+  const [editFlatPrice, setEditFlatPrice] = useState('')
+  const [editDuration, setEditDuration] = useState('')
+  const [editSubmitting, setEditSubmitting] = useState(false)
 
   async function reload() {
     setLoading(true)
@@ -66,6 +84,37 @@ export function ServicesPage() {
       await reload()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to update service')
+    }
+  }
+
+  function openEdit(row: Service) {
+    setEditingService(row)
+    setEditName(row.name)
+    setEditCategoryId(row.category_id ?? '')
+    setEditPricingType(row.pricing_type as PricingType)
+    setEditFlatPrice(row.flat_price != null ? String(row.flat_price) : '')
+    setEditDuration(row.default_duration_minutes != null ? String(row.default_duration_minutes) : '')
+  }
+
+  async function handleEditSubmit(event: FormEvent) {
+    event.preventDefault()
+    if (!editingService || !editName.trim()) return
+    setEditSubmitting(true)
+    try {
+      await updateService(editingService.id, {
+        name: editName.trim(),
+        categoryId: editCategoryId || null,
+        pricingType: editPricingType,
+        flatPrice: editPricingType === 'matrix' || editPricingType === 'quoted' ? null : (Number(editFlatPrice) || 0),
+        defaultDurationMinutes: editDuration ? Number(editDuration) : null,
+      })
+      toast.success('Saved')
+      setEditingService(null)
+      await reload()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save service')
+    } finally {
+      setEditSubmitting(false)
     }
   }
 
@@ -128,8 +177,10 @@ export function ServicesPage() {
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>Category</TableHead>
+                <TableHead>Pricing</TableHead>
                 <TableHead>Duration</TableHead>
                 <TableHead className="text-right">Active</TableHead>
+                <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -137,15 +188,27 @@ export function ServicesPage() {
                 <TableRow key={row.id}>
                   <TableCell>{row.name}</TableCell>
                   <TableCell>{categoryName(row.category_id)}</TableCell>
+                  <TableCell>
+                    {row.pricing_type === 'matrix'
+                      ? 'By vehicle size'
+                      : row.pricing_type === 'quoted'
+                        ? 'Quoted'
+                        : `₱${row.flat_price ?? 0}${row.pricing_type === 'starting_at' ? ' (from)' : ''}`}
+                  </TableCell>
                   <TableCell>{row.default_duration_minutes ? `${row.default_duration_minutes} min` : '—'}</TableCell>
                   <TableCell className="text-right">
                     <Switch checked={row.is_active} onCheckedChange={() => toggleActive(row)} />
+                  </TableCell>
+                  <TableCell>
+                    <Button size="sm" variant="outline" onClick={() => openEdit(row)}>
+                      Edit
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))}
               {!loading && services.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center text-muted-foreground">
+                  <TableCell colSpan={6} className="text-center text-muted-foreground">
                     No services yet.
                   </TableCell>
                 </TableRow>
@@ -154,6 +217,73 @@ export function ServicesPage() {
           </Table>
         </CardContent>
       </Card>
+
+      <Dialog open={!!editingService} onOpenChange={(o) => !o && setEditingService(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit service</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleEditSubmit} className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="edit-name">Name</Label>
+              <Input id="edit-name" value={editName} onChange={(e) => setEditName(e.target.value)} required />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="edit-category">Category</Label>
+              <Select value={editCategoryId} onValueChange={setEditCategoryId}>
+                <SelectTrigger id="edit-category">
+                  <SelectValue placeholder="Uncategorized" />
+                </SelectTrigger>
+                <SelectContent>
+                  {categories.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="edit-pricing-type">Pricing</Label>
+              <Select value={editPricingType} onValueChange={(v) => setEditPricingType(v as PricingType)}>
+                <SelectTrigger id="edit-pricing-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(PRICING_TYPE_LABELS).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {(editPricingType === 'flat' || editPricingType === 'starting_at') && (
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="edit-flat-price">Price (₱)</Label>
+                <Input
+                  id="edit-flat-price"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={editFlatPrice}
+                  onChange={(e) => setEditFlatPrice(e.target.value)}
+                  required
+                />
+              </div>
+            )}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="edit-duration">Duration (min)</Label>
+              <Input id="edit-duration" type="number" value={editDuration} onChange={(e) => setEditDuration(e.target.value)} />
+            </div>
+            <DialogFooter>
+              <Button type="submit" disabled={editSubmitting}>
+                Save
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
