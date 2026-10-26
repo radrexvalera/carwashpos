@@ -314,11 +314,11 @@ export function CommissionRulesPage() {
           </p>
           <div className="flex flex-wrap items-end gap-3">
             <div className="flex flex-col gap-1.5">
-              <Label>Carwash-only jobs</Label>
+              <Label>Wash services</Label>
               <Input type="number" step="0.01" min="0" className="w-28" value={carwashRate} onChange={(e) => setCarwashRate(e.target.value)} />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label>Jobs with any other service</Label>
+              <Label>Other services (default)</Label>
               <Input type="number" step="0.01" min="0" className="w-28" value={otherRate} onChange={(e) => setOtherRate(e.target.value)} />
             </div>
             <Button disabled={savingPolicy} onClick={savePolicy}>
