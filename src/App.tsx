@@ -53,7 +53,10 @@ const ExpenseCategoriesPage = lazyWithRetry(() =>
   import('@/features/expenses/ExpenseCategoriesPage').then((m) => ({ default: m.ExpenseCategoriesPage })),
 )
 const SalesReportPage = lazyWithRetry(() => import('@/features/reports/SalesReportPage').then((m) => ({ default: m.SalesReportPage })))
-const AppointmentsPage = lazyWithRetry(() => import('@/features/appointments/AppointmentsPage').then((m) => ({ default: m.AppointmentsPage })))
+const CustomerInsightsPage = lazyWithRetry(() =>
+  import('@/features/reports/CustomerInsightsPage').then((m) => ({ default: m.CustomerInsightsPage })),
+)
+const AppointmentsPage =lazyWithRetry(() => import('@/features/appointments/AppointmentsPage').then((m) => ({ default: m.AppointmentsPage })))
 const TransactionsPage = lazyWithRetry(() => import('@/features/sales/TransactionsPage').then((m) => ({ default: m.TransactionsPage })))
 const OwnerConsolePage = lazyWithRetry(() => import('@/features/owner/OwnerConsolePage').then((m) => ({ default: m.OwnerConsolePage })))
 
@@ -235,6 +238,14 @@ export default function App() {
                   element={
                     <RoleGuard allowedRoles={['admin', 'manager']}>
                       <SalesReportPage />
+                    </RoleGuard>
+                  }
+                />
+                <Route
+                  path="/reports/customers"
+                  element={
+                    <RoleGuard allowedRoles={['admin', 'manager']}>
+                      <CustomerInsightsPage />
                     </RoleGuard>
                   }
                 />

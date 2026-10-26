@@ -23,6 +23,7 @@ import {
   Sun,
   Tags,
   Truck,
+  UserCheck,
   Users,
   Wallet,
   Warehouse,
@@ -69,6 +70,7 @@ const navEntries: NavEntry[] = [
     items: [
       { to: '/reports/commission', label: 'Commission Report', icon: Percent },
       { to: '/reports/sales', label: 'Sales Report', icon: BarChart3 },
+      { to: '/reports/customers', label: 'Customer Insights', icon: UserCheck },
     ],
   },
   {
