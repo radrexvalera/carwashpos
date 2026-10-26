@@ -1,5 +1,21 @@
-import { Document, Image, Page, StyleSheet, Text, View } from '@react-pdf/renderer'
+import { Document, Font, Image, Page, StyleSheet, Text, View } from '@react-pdf/renderer'
 import { formatMoney } from '@/lib/money'
+// Helvetica (a built-in PDF standard font) has no glyph for the peso sign (U+20B1) -- it silently
+// fell back to a substitute glyph (rendered as "±") instead. Noto Sans does include it; the
+// latin-ext subset specifically (not latin alone, which is missing it too) -- verified directly
+// against the font file before picking this one. Static per-weight files (not the variable-font
+// build) so bold text actually renders bold -- react-pdf embeds whatever instance fontkit resolves
+// by default and doesn't request a specific wght axis value from a variable font.
+import notoSansRegularUrl from '@fontsource/noto-sans/files/noto-sans-latin-ext-400-normal.woff?url'
+import notoSansBoldUrl from '@fontsource/noto-sans/files/noto-sans-latin-ext-700-normal.woff?url'
+
+Font.register({
+  family: 'Noto Sans',
+  fonts: [
+    { src: notoSansRegularUrl, fontWeight: 400 },
+    { src: notoSansBoldUrl, fontWeight: 700 },
+  ],
+})
 
 export interface PayslipPdfJobRow {
   jobNumber: string
@@ -39,7 +55,7 @@ export interface PayslipPdfData {
 }
 
 const styles = StyleSheet.create({
-  page: { padding: 24, fontSize: 9, fontFamily: 'Helvetica' },
+  page: { padding: 24, fontSize: 9, fontFamily: 'Noto Sans' },
   border: { flex: 1, borderWidth: 1, borderColor: '#000', padding: 24 },
   center: { textAlign: 'center' },
   businessName: { fontSize: 16, fontWeight: 'bold', textAlign: 'center' },
@@ -62,18 +78,24 @@ const styles = StyleSheet.create({
     borderBottomColor: '#000',
     paddingBottom: 4,
     fontWeight: 'bold',
+    fontSize: 8,
   },
-  tableRow: { flexDirection: 'row', paddingVertical: 4, borderBottomWidth: 0.5, borderBottomColor: '#ccc' },
-  colJob: { width: '9%' },
-  colPlate: { width: '8%' },
-  colSize: { width: '7%' },
-  colDate: { width: '8%' },
-  colService: { width: '13%' },
-  colServicesOnJob: { width: '21%' },
-  colRate: { width: '7%', textAlign: 'right' },
-  colGross: { width: '9%', textAlign: 'right' },
-  colDiscount: { width: '9%', textAlign: 'right' },
-  colCommission: { width: '9%', textAlign: 'right' },
+  tableRow: { flexDirection: 'row', paddingVertical: 4, borderBottomWidth: 0.5, borderBottomColor: '#ccc', fontSize: 8 },
+  // overflow: 'hidden' on every cell is a safety net -- react-pdf doesn't clip text that's too long
+  // for its box by default, it just paints past the edge into whatever column comes next. The
+  // column widths below are sized for realistic content (Job # is the last 4 digits only, not the
+  // full "JOB-YYYYMMDD-NNNN" string -- that's what overflowed into "Plate" before), but this keeps
+  // a one-off unusually long value from ever corrupting the row again.
+  colJob: { width: '6%', overflow: 'hidden', paddingRight: 3 },
+  colPlate: { width: '9%', overflow: 'hidden', paddingRight: 3 },
+  colSize: { width: '8%', overflow: 'hidden', paddingRight: 3 },
+  colDate: { width: '9%', overflow: 'hidden', paddingRight: 3 },
+  colService: { width: '10%', overflow: 'hidden', paddingRight: 3 },
+  colServicesOnJob: { width: '26%', overflow: 'hidden', paddingRight: 3 },
+  colRate: { width: '6%', textAlign: 'right', overflow: 'hidden', paddingRight: 3 },
+  colGross: { width: '8%', textAlign: 'right', overflow: 'hidden', paddingRight: 3 },
+  colDiscount: { width: '8%', textAlign: 'right', overflow: 'hidden', paddingRight: 3 },
+  colCommission: { width: '10%', textAlign: 'right', overflow: 'hidden' },
   totalRow: { flexDirection: 'row', paddingTop: 6, borderTopWidth: 1, borderTopColor: '#000', marginTop: 4 },
   logo: { height: 40, maxWidth: 160, objectFit: 'contain', alignSelf: 'center', marginBottom: 6 },
 })
@@ -223,7 +245,7 @@ export function PayslipPdfDocument(d: PayslipPdfData) {
             </View>
             {d.commissionJobs.map((job, i) => (
               <View key={i} style={styles.tableRow}>
-                <Text style={styles.colJob}>{job.jobNumber}</Text>
+                <Text style={styles.colJob}>#{job.jobNumber.slice(-4)}</Text>
                 <Text style={styles.colPlate}>{job.plateNumber ?? '-'}</Text>
                 <Text style={styles.colSize}>{job.vehicleSizeName ?? '-'}</Text>
                 <Text style={styles.colDate}>{job.date}</Text>
