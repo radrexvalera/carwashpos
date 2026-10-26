@@ -434,7 +434,7 @@ export function CommissionRulesPage() {
                                 className="w-28"
                                 value={row.rate}
                                 onChange={(e) => updateRow(key, { rate: e.target.value })}
-                                placeholder="₱"
+                                placeholder={row.type === 'percentage' ? '%' : row.type === 'points' ? 'pts' : '₱'}
                               />
                             )}
                           </TableCell>
