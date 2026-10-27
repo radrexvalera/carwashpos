@@ -72,6 +72,10 @@ export function JobPaymentPage() {
   const [crewNames, setCrewNames] = useState<string[]>([])
   const [jobServices, setJobServices] = useState<JobService[]>([])
   const [discounts, setDiscounts] = useState<Record<string, string>>({})
+  // A freebie is just a 100%-off discount on that one line under the hood (create_sale() needs no
+  // changes) -- this just makes it a one-tap toggle instead of typing the exact price as a manual
+  // discount, and keeps the discount input from showing a stale/confusing value while it's active.
+  const [freebies, setFreebies] = useState<Record<string, boolean>>({})
   const [discountType, setDiscountType] = useState<'percentage' | 'fixed'>('percentage')
   const [discountValue, setDiscountValue] = useState('')
   const [retailItems, setRetailItems] = useState<InventoryStockLevel[]>([])
@@ -186,6 +190,12 @@ export function JobPaymentPage() {
   // back, never part of the recorded payment.
   const enteredAmount = Number(amount) || 0
   const changeDue = method === 'cash' && enteredAmount > remaining ? Math.round((enteredAmount - remaining) * 100) / 100 : 0
+
+  function toggleFreebie(js: JobService) {
+    const next = !freebies[js.id]
+    setFreebies((prev) => ({ ...prev, [js.id]: next }))
+    setDiscounts((prev) => ({ ...prev, [js.id]: next ? String(js.line_total) : '' }))
+  }
 
   function addProductLine() {
     const item = retailItems.find((i) => i.id === pickedItemId)
@@ -389,23 +399,33 @@ export function JobPaymentPage() {
           <CardTitle>Services</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          {jobServices.map((js) => (
-            <div key={js.id} className="flex items-center justify-between gap-2">
-              <span>{js.serviceName}</span>
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">{formatMoney(js.line_total)}</span>
-                <Input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  className="w-24"
-                  placeholder="Discount"
-                  value={discounts[js.id] ?? ''}
-                  onChange={(e) => setDiscounts((prev) => ({ ...prev, [js.id]: e.target.value }))}
-                />
+          {jobServices.map((js) => {
+            const isFreebie = !!freebies[js.id]
+            return (
+              <div key={js.id} className="flex items-center justify-between gap-2">
+                <span>{js.serviceName}</span>
+                <div className="flex items-center gap-2">
+                  <span className={isFreebie ? 'text-sm text-muted-foreground line-through' : 'text-sm text-muted-foreground'}>
+                    {formatMoney(js.line_total)}
+                  </span>
+                  <Badge variant={isFreebie ? 'default' : 'outline'} className="cursor-pointer" onClick={() => toggleFreebie(js)}>
+                    Freebie
+                  </Badge>
+                  {!isFreebie && (
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      className="w-24"
+                      placeholder="Discount"
+                      value={discounts[js.id] ?? ''}
+                      onChange={(e) => setDiscounts((prev) => ({ ...prev, [js.id]: e.target.value }))}
+                    />
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </CardContent>
       </Card>
 
