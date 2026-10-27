@@ -64,7 +64,8 @@ export function SalesReportPage() {
   }
 
   // grossSales is already net of the card processing fee, so it's not subtracted again here.
-  const net = sales && expenses ? sales.grossSales - expenses.total : 0
+  // Commission is a real payable to the crew, same category as an expense -- reduces Net too.
+  const net = sales && expenses ? sales.grossSales - expenses.total - sales.commissionTotal : 0
 
   function csvCell(value: string | number) {
     const str = String(value)
@@ -83,6 +84,7 @@ export function SalesReportPage() {
       ['Voided sales', String(sales.voidedCount)],
       ['Expenses', expenses.total.toFixed(2)],
       ['Card processing fees', sales.cardProcessingFeeTotal.toFixed(2)],
+      ['Commission payable', sales.commissionTotal.toFixed(2)],
       ['Net', net.toFixed(2)],
       ['Discounts given', sales.discountTotal.toFixed(2)],
       ['Promotions given', sales.promotionDiscountTotal.toFixed(2)],
@@ -192,6 +194,12 @@ export function SalesReportPage() {
               <CardContent className="pt-6">
                 <div className="text-sm text-muted-foreground">Card processing fees</div>
                 <div className="text-xl font-semibold">{formatMoney(sales.cardProcessingFeeTotal)}</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <div className="text-sm text-muted-foreground">Commission payable</div>
+                <div className="text-xl font-semibold">{formatMoney(sales.commissionTotal)}</div>
               </CardContent>
             </Card>
           </div>

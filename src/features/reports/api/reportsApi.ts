@@ -9,16 +9,21 @@ export async function getSalesReport(fromIso: string, toIso: string) {
   const voidedCount = (sales ?? []).filter((s) => s.status === 'voided').length
   const saleIds = completed.map((s) => s.id)
 
-  const [paymentsRes, itemsRes] = await Promise.all([
+  const [paymentsRes, itemsRes, commissionRes] = await Promise.all([
     saleIds.length
       ? supabase.from('payments').select('*').in('sale_id', saleIds)
       : Promise.resolve({ data: [], error: null }),
     saleIds.length
       ? supabase.from('sale_items').select('*').in('sale_id', saleIds)
       : Promise.resolve({ data: [], error: null }),
+    // Commission is a real payable to the crew, same category as an expense -- summed by when it
+    // was earned (ledger rows are append-only; a correction/reversal is its own negative row, so
+    // summing everything in range nets out correctly without special-casing status).
+    supabase.from('commission_ledger').select('commission_amount').gte('created_at', fromIso).lte('created_at', toIso),
   ])
   if (paymentsRes.error) throw paymentsRes.error
   if (itemsRes.error) throw itemsRes.error
+  if (commissionRes.error) throw commissionRes.error
 
   const byMethod = new Map<string, number>()
   for (const p of paymentsRes.data ?? []) {
@@ -49,6 +54,7 @@ export async function getSalesReport(fromIso: string, toIso: string) {
     discountTotal: completed.reduce((sum, s) => sum + s.discount_total + s.manual_discount_amount, 0),
     promotionDiscountTotal: completed.reduce((sum, s) => sum + s.promotion_discount_amount, 0),
     cardProcessingFeeTotal: completed.reduce((sum, s) => sum + s.card_processing_fee, 0),
+    commissionTotal: (commissionRes.data ?? []).reduce((sum, c) => sum + c.commission_amount, 0),
     serviceRevenue,
     productRevenue,
     byMethod: [...byMethod.entries()].map(([method, total]) => ({ method, total })).sort((a, b) => b.total - a.total),
@@ -123,20 +129,25 @@ export async function getDashboardSummary(fromStr: string = localDateString(), t
   const fromIso = new Date(`${fromStr}T00:00:00`).toISOString()
   const toIso = new Date(`${toStr}T23:59:59`).toISOString()
 
-  const [salesRes, expensesRes, activeJobsRes, completedRes, lowStockRes, commissionRes] = await Promise.all([
-    supabase.from('sales').select('total, status, card_processing_fee').gte('created_at', fromIso).lte('created_at', toIso),
-    supabase.from('expenses').select('amount, is_voided').gte('expense_date', fromStr).lte('expense_date', toStr),
-    supabase.from('jobs').select('status').not('status', 'in', '(completed,cancelled)'),
-    supabase
-      .from('jobs')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'completed')
-      .gte('completed_at', fromIso)
-      .lte('completed_at', toIso),
-    supabase.from('inventory_stock_levels').select('id').eq('is_low_stock', true).eq('is_active', true),
-    supabase.from('commission_ledger').select('commission_amount').eq('status', 'earned'),
-  ])
-  for (const r of [salesRes, expensesRes, activeJobsRes, completedRes, lowStockRes, commissionRes]) {
+  const [salesRes, expensesRes, activeJobsRes, completedRes, lowStockRes, pendingCommissionRes, periodCommissionRes] =
+    await Promise.all([
+      supabase.from('sales').select('total, status, card_processing_fee').gte('created_at', fromIso).lte('created_at', toIso),
+      supabase.from('expenses').select('amount, is_voided').gte('expense_date', fromStr).lte('expense_date', toStr),
+      supabase.from('jobs').select('status').not('status', 'in', '(completed,cancelled)'),
+      supabase
+        .from('jobs')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'completed')
+        .gte('completed_at', fromIso)
+        .lte('completed_at', toIso),
+      supabase.from('inventory_stock_levels').select('id').eq('is_low_stock', true).eq('is_active', true),
+      // Live snapshot, not period-scoped -- total currently unpaid, regardless of when it was earned.
+      supabase.from('commission_ledger').select('commission_amount').eq('status', 'earned'),
+      // Period-scoped -- commission is a real payable to the crew, same category as an expense, so
+      // it reduces net for the selected range too.
+      supabase.from('commission_ledger').select('commission_amount').gte('created_at', fromIso).lte('created_at', toIso),
+    ])
+  for (const r of [salesRes, expensesRes, activeJobsRes, completedRes, lowStockRes, pendingCommissionRes, periodCommissionRes]) {
     if (r.error) throw r.error
   }
 
@@ -146,6 +157,7 @@ export async function getDashboardSummary(fromStr: string = localDateString(), t
   // what counts as sales here too, not just net.
   const sales = completedSales.reduce((sum, s) => sum + s.total, 0) - cardProcessingFees
   const expenses = (expensesRes.data ?? []).filter((e) => !e.is_voided).reduce((sum, e) => sum + e.amount, 0)
+  const commission = (periodCommissionRes.data ?? []).reduce((sum, c) => sum + c.commission_amount, 0)
 
   const jobStatusCounts: Record<string, number> = {}
   for (const j of activeJobsRes.data ?? []) {
@@ -156,11 +168,11 @@ export async function getDashboardSummary(fromStr: string = localDateString(), t
     sales,
     expenses,
     cardProcessingFees,
-    net: sales - expenses,
+    net: sales - expenses - commission,
     activeJobsCount: (activeJobsRes.data ?? []).length,
     jobStatusCounts,
     completedCount: completedRes.count ?? 0,
     lowStockCount: (lowStockRes.data ?? []).length,
-    pendingCommission: (commissionRes.data ?? []).reduce((sum, c) => sum + c.commission_amount, 0),
+    pendingCommission: (pendingCommissionRes.data ?? []).reduce((sum, c) => sum + c.commission_amount, 0),
   }
 }
