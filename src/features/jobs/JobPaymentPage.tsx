@@ -609,7 +609,11 @@ export function JobPaymentPage() {
 
           <Separator />
 
-          <Button size="lg" disabled={submitting || payments.length === 0 || Math.abs(remaining) > 0.01} onClick={handleSubmit}>
+          <Button
+            size="lg"
+            disabled={submitting || (roundedTotal > 0.01 && payments.length === 0) || Math.abs(remaining) > 0.01}
+            onClick={handleSubmit}
+          >
             Complete payment
           </Button>
         </CardContent>
