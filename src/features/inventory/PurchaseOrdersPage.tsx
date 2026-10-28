@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { formatMoney } from '@/lib/money'
 import { localDateString } from '@/lib/date'
 import { createPurchaseOrder, listInventoryUnits, listPurchaseOrders, listStockLevels, listSuppliers } from './api/inventoryApi'
-import type { InventoryStockLevel, PurchaseOrder, Supplier } from './api/inventoryApi'
+import type { InventoryStockLevel, Supplier } from './api/inventoryApi'
 
 interface DraftLine {
   itemId: string
@@ -23,7 +23,7 @@ interface DraftLine {
 export function PurchaseOrdersPage() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [items, setItems] = useState<InventoryStockLevel[]>([])
-  const [orders, setOrders] = useState<PurchaseOrder[]>([])
+  const [orders, setOrders] = useState<Awaited<ReturnType<typeof listPurchaseOrders>>>([])
   const [loading, setLoading] = useState(true)
 
   const [supplierId, setSupplierId] = useState('')
@@ -215,21 +215,29 @@ export function PurchaseOrdersPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Date</TableHead>
+                <TableHead>Supplier</TableHead>
                 <TableHead>Reference</TableHead>
-                <TableHead>Total</TableHead>
+                <TableHead>Items</TableHead>
+                <TableHead className="text-right">Delivery</TableHead>
+                <TableHead className="text-right">Total</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {orders.map((o) => (
                 <TableRow key={o.id}>
                   <TableCell>{o.order_date}</TableCell>
+                  <TableCell>{o.supplierName}</TableCell>
                   <TableCell>{o.reference_number ?? '—'}</TableCell>
-                  <TableCell>{formatMoney(o.total)}</TableCell>
+                  <TableCell className="max-w-xs truncate" title={o.itemsSummary}>
+                    {o.itemsSummary || '—'}
+                  </TableCell>
+                  <TableCell className="text-right">{o.delivery_charge > 0 ? formatMoney(o.delivery_charge) : '—'}</TableCell>
+                  <TableCell className="text-right font-medium">{formatMoney(o.total)}</TableCell>
                 </TableRow>
               ))}
               {!loading && orders.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={3} className="text-center text-muted-foreground">
+                  <TableCell colSpan={6} className="text-center text-muted-foreground">
                     No purchases yet.
                   </TableCell>
                 </TableRow>

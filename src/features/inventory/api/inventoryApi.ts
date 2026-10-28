@@ -62,6 +62,48 @@ export async function listStockLevels() {
   return data
 }
 
+// Enriches stock levels with each item's most recent supplier, derived from its latest
+// 'purchase' transaction -- inventory_items has no supplier_id of its own (an item can be
+// bought from different suppliers over time), so "the supplier" is always "the last one used".
+export async function listStockLevelsWithSupplier() {
+  const items = await listStockLevels()
+
+  const itemIds = (items ?? []).map((i) => i.id)
+  const { data: purchases, error: purchasesError } = itemIds.length
+    ? await supabase
+        .from('inventory_transactions')
+        .select('item_id, reference_id, created_at')
+        .eq('transaction_type', 'purchase')
+        .eq('reference_type', 'purchase_order')
+        .in('item_id', itemIds)
+        .order('created_at', { ascending: false })
+    : { data: [], error: null }
+  if (purchasesError) throw purchasesError
+
+  const poIds = [...new Set((purchases ?? []).map((p) => p.reference_id).filter((id): id is string => !!id))]
+  const { data: orders, error: ordersError } = poIds.length
+    ? await supabase.from('purchase_orders').select('id, supplier_id').in('id', poIds)
+    : { data: [], error: null }
+  if (ordersError) throw ordersError
+  const supplierIdByOrderId = new Map((orders ?? []).map((o) => [o.id, o.supplier_id]))
+
+  const supplierIds = [...new Set((orders ?? []).map((o) => o.supplier_id))]
+  const { data: suppliers, error: suppliersError } = supplierIds.length
+    ? await supabase.from('suppliers').select('id, name').in('id', supplierIds)
+    : { data: [], error: null }
+  if (suppliersError) throw suppliersError
+  const supplierNameById = new Map((suppliers ?? []).map((s) => [s.id, s.name]))
+
+  const lastSupplierByItemId = new Map<string, string>()
+  for (const p of purchases ?? []) {
+    if (lastSupplierByItemId.has(p.item_id)) continue
+    const supplierId = p.reference_id ? supplierIdByOrderId.get(p.reference_id) : undefined
+    if (supplierId) lastSupplierByItemId.set(p.item_id, supplierNameById.get(supplierId) ?? 'Unknown supplier')
+  }
+
+  return (items ?? []).map((row) => ({ ...row, lastSupplierName: lastSupplierByItemId.get(row.id) ?? null }))
+}
+
 export async function createInventoryItem(input: {
   tenantId: string
   categoryId: string | null
@@ -91,6 +133,32 @@ export async function createInventoryItem(input: {
 
 export async function setInventoryItemActive(id: string, isActive: boolean) {
   const { error } = await supabase.from('inventory_items').update({ is_active: isActive }).eq('id', id)
+  if (error) throw error
+}
+
+export async function updateInventoryItem(input: {
+  id: string
+  name: string
+  categoryId: string | null
+  itemType: 'retail' | 'consumable' | 'reusable_equipment' | 'asset'
+  unitId: string
+  retailPrice: number | null
+  reorderLevel: number | null
+}) {
+  const { error } = await supabase.rpc('update_inventory_item', {
+    p_item_id: input.id,
+    p_name: input.name,
+    p_category_id: input.categoryId,
+    p_item_type: input.itemType,
+    p_unit_id: input.unitId,
+    p_retail_price: input.retailPrice,
+    p_reorder_level: input.reorderLevel,
+  })
+  if (error) throw error
+}
+
+export async function deleteInventoryItem(id: string) {
+  const { error } = await supabase.rpc('delete_inventory_item', { p_item_id: id })
   if (error) throw error
 }
 
@@ -128,10 +196,110 @@ export async function createSupplier(input: { tenantId: string; name: string; co
   if (error) throw error
 }
 
+// Manual joins (not an embedded select) for the same reason as everywhere else in this codebase --
+// types.ts's hand-written Relationships are empty. Adds the supplier name and a short items summary
+// so the Recent purchases list is actually readable, not just a bare date/reference/total row.
 export async function listPurchaseOrders() {
-  const { data, error } = await supabase.from('purchase_orders').select('*').order('created_at', { ascending: false })
+  const { data: orders, error } = await supabase.from('purchase_orders').select('*').order('created_at', { ascending: false })
   if (error) throw error
-  return data
+
+  const supplierIds = [...new Set((orders ?? []).map((o) => o.supplier_id))]
+  const { data: suppliers, error: suppliersError } = supplierIds.length
+    ? await supabase.from('suppliers').select('id, name').in('id', supplierIds)
+    : { data: [], error: null }
+  if (suppliersError) throw suppliersError
+  const supplierNameById = new Map((suppliers ?? []).map((s) => [s.id, s.name]))
+
+  const orderIds = (orders ?? []).map((o) => o.id)
+  const { data: lines, error: linesError } = orderIds.length
+    ? await supabase.from('purchase_order_items').select('purchase_order_id, item_id, quantity').in('purchase_order_id', orderIds)
+    : { data: [], error: null }
+  if (linesError) throw linesError
+
+  const itemIds = [...new Set((lines ?? []).map((l) => l.item_id))]
+  const { data: inventoryItems, error: itemsError } = itemIds.length
+    ? await supabase.from('inventory_items').select('id, name').in('id', itemIds)
+    : { data: [], error: null }
+  if (itemsError) throw itemsError
+  const itemNameById = new Map((inventoryItems ?? []).map((i) => [i.id, i.name]))
+
+  const linesByOrderId = new Map<string, string[]>()
+  for (const l of lines ?? []) {
+    const list = linesByOrderId.get(l.purchase_order_id) ?? []
+    list.push(`${itemNameById.get(l.item_id) ?? 'Item'} ×${l.quantity}`)
+    linesByOrderId.set(l.purchase_order_id, list)
+  }
+
+  return (orders ?? []).map((o) => ({
+    ...o,
+    supplierName: supplierNameById.get(o.supplier_id) ?? 'Unknown supplier',
+    itemsSummary: (linesByOrderId.get(o.id) ?? []).join(', '),
+  }))
+}
+
+const REFERENCE_TYPE_LABELS: Record<string, string> = {
+  purchase_order: 'Purchase order',
+  sale: 'Sale',
+  job_service: 'Job service',
+  manual: 'Manual',
+}
+
+const INVENTORY_LOGS_PAGE_SIZE = 100
+
+// Tenant-wide feed over inventory_transactions (the append-only stock ledger) so stock changes
+// are auditable in one place instead of only per-item inside the Adjust dialog's history list.
+// Paginated (oldest-first offset) rather than a single hard cap, so older history -- purchases,
+// adjustments, consumption from months back -- stays reachable via "Load more", not truncated.
+export async function listInventoryLogs(itemId?: string, page = 0) {
+  let query = supabase
+    .from('inventory_transactions')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .range(page * INVENTORY_LOGS_PAGE_SIZE, page * INVENTORY_LOGS_PAGE_SIZE + INVENTORY_LOGS_PAGE_SIZE - 1)
+  if (itemId) query = query.eq('item_id', itemId)
+  const { data, error } = await query
+  if (error) throw error
+  const hasMore = (data ?? []).length === INVENTORY_LOGS_PAGE_SIZE
+
+  const itemIds = [...new Set((data ?? []).map((t) => t.item_id))]
+  const { data: itemsData, error: itemsError } = itemIds.length
+    ? await supabase.from('inventory_items').select('id, name').in('id', itemIds)
+    : { data: [], error: null }
+  if (itemsError) throw itemsError
+  const itemNameById = new Map((itemsData ?? []).map((i) => [i.id, i.name]))
+
+  const userIds = [...new Set((data ?? []).map((t) => t.created_by))]
+  const { data: users, error: usersError } = userIds.length
+    ? await supabase.from('user_profiles').select('id, full_name').in('id', userIds)
+    : { data: [], error: null }
+  if (usersError) throw usersError
+  const userNameById = new Map((users ?? []).map((u) => [u.id, u.full_name]))
+
+  const poIds = [
+    ...new Set(
+      (data ?? [])
+        .filter((t) => t.reference_type === 'purchase_order' && t.reference_id)
+        .map((t) => t.reference_id as string),
+    ),
+  ]
+  const { data: orders, error: ordersError } = poIds.length
+    ? await supabase.from('purchase_orders').select('id, reference_number').in('id', poIds)
+    : { data: [], error: null }
+  if (ordersError) throw ordersError
+  const poRefById = new Map((orders ?? []).map((o) => [o.id, o.reference_number]))
+
+  return {
+    rows: (data ?? []).map((t) => ({
+      ...t,
+      itemName: itemNameById.get(t.item_id) ?? 'Unknown item',
+      createdByName: userNameById.get(t.created_by) ?? 'Unknown',
+      referenceLabel:
+        t.reference_type === 'purchase_order' && t.reference_id && poRefById.get(t.reference_id)
+          ? `Purchase order ${poRefById.get(t.reference_id)}`
+          : (t.reference_type && REFERENCE_TYPE_LABELS[t.reference_type]) || '—',
+    })),
+    hasMore,
+  }
 }
 
 export async function createPurchaseOrder(input: {

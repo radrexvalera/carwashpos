@@ -42,6 +42,9 @@ const InventoryItemsPage = lazyWithRetry(() =>
   import('@/features/inventory/InventoryItemsPage').then((m) => ({ default: m.InventoryItemsPage })),
 )
 const SuppliersPage = lazyWithRetry(() => import('@/features/inventory/SuppliersPage').then((m) => ({ default: m.SuppliersPage })))
+const InventoryLogsPage = lazyWithRetry(() =>
+  import('@/features/inventory/InventoryLogsPage').then((m) => ({ default: m.InventoryLogsPage })),
+)
 const PurchaseOrdersPage = lazyWithRetry(() =>
   import('@/features/inventory/PurchaseOrdersPage').then((m) => ({ default: m.PurchaseOrdersPage })),
 )
@@ -206,6 +209,14 @@ export default function App() {
                   element={
                     <RoleGuard allowedRoles={['admin', 'manager']}>
                       <PurchaseOrdersPage />
+                    </RoleGuard>
+                  }
+                />
+                <Route
+                  path="/inventory/logs"
+                  element={
+                    <RoleGuard allowedRoles={['admin', 'manager']}>
+                      <InventoryLogsPage />
                     </RoleGuard>
                   }
                 />

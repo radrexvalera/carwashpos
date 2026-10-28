@@ -1552,6 +1552,22 @@ export interface Database {
         Args: { payload: Json }
         Returns: Json
       }
+      update_inventory_item: {
+        Args: {
+          p_item_id: string
+          p_name: string
+          p_category_id: string | null
+          p_item_type: string
+          p_unit_id: string
+          p_retail_price: number | null
+          p_reorder_level: number | null
+        }
+        Returns: Json
+      }
+      delete_inventory_item: {
+        Args: { p_item_id: string }
+        Returns: Json
+      }
       record_expense: {
         Args: { payload: Json }
         Returns: Json

@@ -10,6 +10,7 @@ import {
   DollarSign,
   FlaskConical,
   FolderTree,
+  History,
   LayoutDashboard,
   ListChecks,
   Menu,
@@ -92,6 +93,7 @@ const navEntries: NavEntry[] = [
     items: [
       { to: '/inventory', label: 'Inventory', icon: Package },
       { to: '/inventory/purchases', label: 'Purchases', icon: ShoppingCart },
+      { to: '/inventory/logs', label: 'Inventory Logs', icon: History },
       { to: '/admin/suppliers', label: 'Suppliers', icon: Truck },
       { to: '/admin/service-recipes', label: 'Service Recipes', icon: FlaskConical },
       { to: '/admin/inventory-categories', label: 'Inventory Categories', icon: FolderTree },
