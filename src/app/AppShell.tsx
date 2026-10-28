@@ -179,7 +179,7 @@ function SidebarNavContent({
             {isOpen && (
               <div className="flex flex-col gap-1 pl-3">
                 {entry.items.map((item) => (
-                  <NavLink key={item.to} to={item.to} className={navLinkClassName} onClick={onNavigate}>
+                  <NavLink key={item.to} to={item.to} end className={navLinkClassName} onClick={onNavigate}>
                     <item.icon className="size-4 shrink-0" />
                     {item.label}
                   </NavLink>
