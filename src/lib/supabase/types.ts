@@ -455,6 +455,7 @@ export interface Database {
           discount_total: number
           delivery_charge: number
           total: number
+          payment_method: string
           created_by: string
           created_at: string
         }

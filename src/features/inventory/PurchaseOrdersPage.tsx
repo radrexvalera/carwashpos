@@ -20,6 +20,22 @@ interface DraftLine {
   unitCost: string
 }
 
+type PaymentMethod = 'cash' | 'gcash' | 'maya' | 'bank_transfer' | 'card' | 'maribank' | 'gotyme' | 'rcbc' | 'bpi' | 'unionbank' | 'qrph'
+
+const METHOD_LABELS: Record<string, string> = {
+  cash: 'Cash',
+  gcash: 'GCash',
+  maya: 'Maya',
+  bank_transfer: 'Bank Transfer',
+  card: 'Card',
+  maribank: 'Maribank',
+  gotyme: 'GoTyme',
+  rcbc: 'RCBC',
+  bpi: 'BPI',
+  unionbank: 'UnionBank',
+  qrph: 'QR Ph',
+}
+
 export function PurchaseOrdersPage() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [items, setItems] = useState<InventoryStockLevel[]>([])
@@ -29,6 +45,7 @@ export function PurchaseOrdersPage() {
   const [supplierId, setSupplierId] = useState('')
   const [referenceNumber, setReferenceNumber] = useState('')
   const [deliveryCharge, setDeliveryCharge] = useState('0')
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash')
   const [lines, setLines] = useState<DraftLine[]>([])
   const [pickedItemId, setPickedItemId] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -89,12 +106,14 @@ export function PurchaseOrdersPage() {
         referenceNumber: referenceNumber.trim() || null,
         orderDate: localDateString(),
         deliveryCharge: Number(deliveryCharge) || 0,
+        paymentMethod,
         items: lines.map((l) => ({ itemId: l.itemId, quantity: Number(l.quantity), unitCost: Number(l.unitCost), discountAmount: 0 })),
       })
       toast.success('Purchase order recorded, stock updated')
       setLines([])
       setReferenceNumber('')
       setDeliveryCharge('0')
+      setPaymentMethod('cash')
       await reload()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to record purchase order')
@@ -138,6 +157,21 @@ export function PurchaseOrdersPage() {
             <div className="flex flex-col gap-1.5">
               <Label>Delivery charge</Label>
               <Input type="number" step="0.01" className="w-28" value={deliveryCharge} onChange={(e) => setDeliveryCharge(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Payment method</Label>
+              <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as PaymentMethod)}>
+                <SelectTrigger className="w-36">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(METHOD_LABELS).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
@@ -218,6 +252,7 @@ export function PurchaseOrdersPage() {
                 <TableHead>Supplier</TableHead>
                 <TableHead>Reference</TableHead>
                 <TableHead>Items</TableHead>
+                <TableHead>Payment</TableHead>
                 <TableHead className="text-right">Delivery</TableHead>
                 <TableHead className="text-right">Total</TableHead>
               </TableRow>
@@ -231,13 +266,14 @@ export function PurchaseOrdersPage() {
                   <TableCell className="max-w-xs truncate" title={o.itemsSummary}>
                     {o.itemsSummary || '—'}
                   </TableCell>
+                  <TableCell>{METHOD_LABELS[o.payment_method] ?? o.payment_method}</TableCell>
                   <TableCell className="text-right">{o.delivery_charge > 0 ? formatMoney(o.delivery_charge) : '—'}</TableCell>
                   <TableCell className="text-right font-medium">{formatMoney(o.total)}</TableCell>
                 </TableRow>
               ))}
               {!loading && orders.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center text-muted-foreground">
                     No purchases yet.
                   </TableCell>
                 </TableRow>

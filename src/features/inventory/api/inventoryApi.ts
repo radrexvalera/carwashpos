@@ -307,6 +307,7 @@ export async function createPurchaseOrder(input: {
   referenceNumber: string | null
   orderDate: string
   deliveryCharge: number
+  paymentMethod: 'cash' | 'gcash' | 'maya' | 'bank_transfer' | 'card' | 'maribank' | 'gotyme' | 'rcbc' | 'bpi' | 'unionbank' | 'qrph'
   items: { itemId: string; quantity: number; unitCost: number; discountAmount: number }[]
 }) {
   const payload = {
@@ -314,6 +315,7 @@ export async function createPurchaseOrder(input: {
     reference_number: input.referenceNumber,
     order_date: input.orderDate,
     delivery_charge: input.deliveryCharge,
+    payment_method: input.paymentMethod,
     items: input.items.map((i) => ({
       item_id: i.itemId,
       quantity: i.quantity,
