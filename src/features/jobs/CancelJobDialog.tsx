@@ -10,9 +10,13 @@ interface CancelJobDialogProps {
   job: { id: string; plateNumber: string } | null
   tenantId: string
   onOpenChange: (open: boolean) => void
+  // Called after a successful cancel, in addition to the open-board refresh above -- lets a caller
+  // also refresh a list this dialog doesn't know about itself (e.g. the Unpaid tab's completed-but-
+  // not-yet-paid jobs, which job_board_entries' open-board query never included in the first place).
+  onCancelled?: () => void
 }
 
-export function CancelJobDialog({ job, tenantId, onOpenChange }: CancelJobDialogProps) {
+export function CancelJobDialog({ job, tenantId, onOpenChange, onCancelled }: CancelJobDialogProps) {
   const [reason, setReason] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
@@ -22,6 +26,7 @@ export function CancelJobDialog({ job, tenantId, onOpenChange }: CancelJobDialog
     try {
       await cancelJob(job.id, reason.trim())
       await refreshJobBoardCache(tenantId)
+      onCancelled?.()
       toast.success('Job cancelled')
       setReason('')
       onOpenChange(false)

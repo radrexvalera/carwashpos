@@ -69,7 +69,10 @@ export function JobQueuePage() {
   // know so it can recompute commission after a change, since a still-open job has none yet.
   const [editingJobCompleted, setEditingJobCompleted] = useState(false)
   const [editingCrewJobId, setEditingCrewJobId] = useState<string | null>(null)
-  const [cancelingJob, setCancelingJob] = useState<BoardJob | null>(null)
+  // Narrowed to just what CancelJobDialog needs (not the full BoardJob shape) so both a Waiting-
+  // column job (BoardJob) and an Unpaid-tab job (job_board_entries' own snake_case row shape) can
+  // populate this without a lossy cast.
+  const [cancelingJob, setCancelingJob] = useState<{ id: string; plateNumber: string } | null>(null)
 
   const online = useOnlineStatus()
   const [unpaidJobs, setUnpaidJobs] = useState<Awaited<ReturnType<typeof listUnpaidPickedUpJobs>>>([])
@@ -405,16 +408,25 @@ export function JobQueuePage() {
                         {new Date(job.completed_at).toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
                       </div>
                     )}
-                    <Button
-                      variant="outline"
-                      className="w-full"
-                      onClick={() => {
-                        setEditingJobId(job.id)
-                        setEditingJobCompleted(true)
-                      }}
-                    >
-                      Edit
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => {
+                          setEditingJobId(job.id)
+                          setEditingJobCompleted(true)
+                        }}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="w-full text-destructive"
+                        onClick={() => setCancelingJob({ id: job.id, plateNumber: job.plate_number })}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
                     <Link to={`/jobs/${job.id}/pay`}>
                       <Button variant="secondary" className="h-11 w-full text-base">
                         Collect payment
@@ -458,7 +470,12 @@ export function JobQueuePage() {
       )}
 
       {profile && (
-        <CancelJobDialog job={cancelingJob} tenantId={profile.tenantId} onOpenChange={(o) => !o && setCancelingJob(null)} />
+        <CancelJobDialog
+          job={cancelingJob}
+          tenantId={profile.tenantId}
+          onOpenChange={(o) => !o && setCancelingJob(null)}
+          onCancelled={reloadUnpaidJobs}
+        />
       )}
     </div>
   )
