@@ -23,6 +23,13 @@ import { createJobOffline } from './api/jobMutations'
 
 type VehicleRow = Database['public']['Tables']['vehicles']['Row']
 
+type CustomerVehicleMatch = {
+  key: string
+  customerId: string
+  customerName: string
+  vehicle: VehicleRow | null
+}
+
 export function RegisterPage() {
   const { profile } = useTenant()
   const navigate = useNavigate()
@@ -48,9 +55,15 @@ export function RegisterPage() {
     [],
   )
 
+  // Two ways to find/start a vehicle: by plate (the common case) or by customer name (for a
+  // vehicle that has no plate yet -- brand new, or not yet registered). Switching mode resets the
+  // in-progress search/selection rather than letting stale state from the other mode leak through.
+  const [searchMode, setSearchMode] = useState<'plate' | 'customer'>('plate')
   const [plateQuery, setPlateQuery] = useState('')
+  const [nameQuery, setNameQuery] = useState('')
   const [selectedVehicle, setSelectedVehicle] = useState<VehicleRow | null>(null)
   const [showNewVehicleForm, setShowNewVehicleForm] = useState(false)
+  const [prefillCustomerId, setPrefillCustomerId] = useState<string | null>(null)
   const [newPlate, setNewPlate] = useState('')
   const [newMake, setNewMake] = useState('')
   const [newModel, setNewModel] = useState('')
@@ -63,6 +76,18 @@ export function RegisterPage() {
   const [sizeId, setSizeId] = useState('')
   const [lines, setLines] = useState<LocalJobServiceLine[]>([])
   const [submitting, setSubmitting] = useState(false)
+
+  function switchSearchMode(mode: 'plate' | 'customer') {
+    if (mode === searchMode) return
+    setSearchMode(mode)
+    setPlateQuery('')
+    setNameQuery('')
+    setSelectedVehicle(null)
+    setShowNewVehicleForm(false)
+    setPrefillCustomerId(null)
+    setNewPlate('')
+    setNewCustomerName('')
+  }
 
   // Shift status is online-only data (no Dexie cache) -- this page is otherwise fully offline-
   // capable, so genuinely being offline must NOT hard-block job creation here (that would break
@@ -101,9 +126,9 @@ export function RegisterPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.id, online])
 
-  const matches = useLiveQuery<VehicleRow[], VehicleRow[]>(
+  const plateMatches = useLiveQuery<VehicleRow[], VehicleRow[]>(
     () =>
-      plateQuery.trim().length > 0
+      searchMode === 'plate' && plateQuery.trim().length > 0
         ? db.vehicles
             .where('tenant_id')
             .equals(profile?.tenantId ?? '')
@@ -111,7 +136,45 @@ export function RegisterPage() {
             .limit(8)
             .toArray()
         : Promise.resolve([]),
-    [plateQuery, profile?.tenantId],
+    [searchMode, plateQuery, profile?.tenantId],
+    [],
+  )
+
+  // Customer-name mode: find matching customers, then flatten to one row per vehicle they have --
+  // a customer with no vehicle yet still gets one row so picking it can start a new vehicle under
+  // that existing customer instead of creating a duplicate customer record.
+  const customerMatches = useLiveQuery<CustomerVehicleMatch[], CustomerVehicleMatch[]>(
+    async () => {
+      const tenantId = profile?.tenantId ?? ''
+      if (searchMode !== 'customer' || nameQuery.trim().length === 0 || !tenantId) return []
+      const q = nameQuery.trim().toLowerCase()
+      const customers = await db.customers
+        .where('tenant_id')
+        .equals(tenantId)
+        .filter((c) => c.full_name.toLowerCase().includes(q))
+        .limit(8)
+        .toArray()
+      const customerIds = customers.map((c) => c.id)
+      const vehicles = customerIds.length ? await db.vehicles.where('customer_id').anyOf(customerIds).toArray() : []
+      const vehiclesByCustomer = new Map<string, VehicleRow[]>()
+      for (const v of vehicles) {
+        if (!v.customer_id) continue
+        const list = vehiclesByCustomer.get(v.customer_id) ?? []
+        list.push(v)
+        vehiclesByCustomer.set(v.customer_id, list)
+      }
+      const rows: CustomerVehicleMatch[] = []
+      for (const c of customers) {
+        const vs = vehiclesByCustomer.get(c.id) ?? []
+        if (vs.length === 0) {
+          rows.push({ key: c.id, customerId: c.id, customerName: c.full_name, vehicle: null })
+        } else {
+          for (const v of vs) rows.push({ key: v.id, customerId: c.id, customerName: c.full_name, vehicle: v })
+        }
+      }
+      return rows
+    },
+    [searchMode, nameQuery, profile?.tenantId],
     [],
   )
 
@@ -134,29 +197,51 @@ export function RegisterPage() {
     setSelectedVehicle(v)
     setPlateQuery(v.plate_number)
     setShowNewVehicleForm(false)
+    setPrefillCustomerId(null)
     // Reset to this vehicle's own saved size -- otherwise a size picked earlier for a different
     // vehicle this session would win over this vehicle's actual saved size (sizeId, once set,
     // takes priority in effectiveSizeId's fallback chain regardless of which vehicle it was for).
     setSizeId(v.vehicle_size_id || '')
   }
 
+  function selectCustomerMatch(row: CustomerVehicleMatch) {
+    if (row.vehicle) {
+      selectVehicle(row.vehicle)
+      setNameQuery(row.customerName)
+      return
+    }
+    // Existing customer, no vehicle yet -- jump straight into "add vehicle" bound to them instead
+    // of creating a second customer record with the same name.
+    setPrefillCustomerId(row.customerId)
+    setNewCustomerName(row.customerName)
+    setSelectedVehicle(null)
+    setShowNewVehicleForm(true)
+  }
+
+  const isCustomerMode = searchMode === 'customer'
+  const canSubmitNewVehicle = isCustomerMode
+    ? !!(newCustomerName || nameQuery).trim()
+    : !!(newPlate || plateQuery).trim()
+
   async function handleCreateVehicle() {
-    const effectivePlate = (newPlate || plateQuery).trim()
-    if (!profile || !effectivePlate) return
+    if (!profile || !canSubmitNewVehicle) return
+    const effectivePlate = isCustomerMode ? newPlate.trim() : (newPlate || plateQuery).trim()
+    const effectiveCustomerName = (newCustomerName || (isCustomerMode ? nameQuery : '')).trim()
     setCreatingVehicle(true)
     try {
-      let customerId: string | null = null
-      if (newCustomerName.trim()) {
+      let customerId: string | null = prefillCustomerId
+      if (!customerId && effectiveCustomerName) {
         customerId = await createCustomer({
           tenantId: profile.tenantId,
-          fullName: newCustomerName.trim(),
+          fullName: effectiveCustomerName,
           mobile: newCustomerMobile.trim() || null,
         })
       }
-      const vehicleId = await createVehicle({
+      const created = await createVehicle({
         tenantId: profile.tenantId,
         customerId,
-        plateNumber: effectivePlate.toUpperCase(),
+        plateNumber: effectivePlate || null,
+        placeholderBase: effectiveCustomerName || null,
         make: newMake.trim() || null,
         model: newModel.trim() || null,
         color: newColor.trim() || null,
@@ -164,10 +249,10 @@ export function RegisterPage() {
         vehicleSizeId: sizeId || null,
       })
       const vehicle: VehicleRow = {
-        id: vehicleId,
+        id: created.id,
         tenant_id: profile.tenantId,
         customer_id: customerId,
-        plate_number: effectivePlate.toUpperCase(),
+        plate_number: created.plateNumber,
         make: newMake.trim() || null,
         model: newModel.trim() || null,
         year: null,
@@ -176,15 +261,31 @@ export function RegisterPage() {
         vehicle_size_id: sizeId || null,
         notes: null,
         is_active: true,
+        plate_is_placeholder: created.plateIsPlaceholder,
         created_at: new Date().toISOString(),
       }
       await db.vehicles.put(vehicle)
+      if (customerId && !prefillCustomerId && effectiveCustomerName) {
+        await db.customers.put({
+          id: customerId,
+          tenant_id: profile.tenantId,
+          customer_type: 'individual',
+          full_name: effectiveCustomerName,
+          mobile: newCustomerMobile.trim() || null,
+          email: null,
+          address: null,
+          notes: null,
+          is_active: true,
+          created_at: new Date().toISOString(),
+        })
+      }
       selectVehicle(vehicle)
       toast.success('Vehicle added')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to add vehicle')
     } finally {
       setCreatingVehicle(false)
+      setPrefillCustomerId(null)
     }
   }
 
@@ -268,6 +369,7 @@ export function RegisterPage() {
       toast.success('Job created')
       setSelectedVehicle(null)
       setPlateQuery('')
+      setNameQuery('')
       setLines([])
       navigate('/jobs')
     } catch (err) {
@@ -296,7 +398,7 @@ export function RegisterPage() {
       <div className="flex flex-col gap-6">
         <div>
           <h1 className="text-2xl font-semibold">Register</h1>
-          <p className="text-muted-foreground">Search a plate, pick services, assign crew, create the job. Works offline.</p>
+          <p className="text-muted-foreground">Search a plate (or a customer name), pick services, assign crew, create the job. Works offline.</p>
         </div>
 
         <Card id="tour-register-vehicle">
@@ -304,22 +406,53 @@ export function RegisterPage() {
             <CardTitle>Vehicle</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
-            <div className="relative">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                className="pl-8"
-                placeholder="Search plate number…"
-                value={plateQuery}
-                onChange={(e) => {
-                  setPlateQuery(e.target.value)
-                  setSelectedVehicle(null)
-                }}
-              />
+            <div className="flex gap-1">
+              <Button
+                type="button"
+                size="sm"
+                variant={searchMode === 'plate' ? 'default' : 'outline'}
+                onClick={() => switchSearchMode('plate')}
+              >
+                By plate number
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={searchMode === 'customer' ? 'default' : 'outline'}
+                onClick={() => switchSearchMode('customer')}
+              >
+                By customer name
+              </Button>
             </div>
 
-            {!selectedVehicle && plateQuery.trim() && (
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              {isCustomerMode ? (
+                <Input
+                  className="pl-8"
+                  placeholder="Search customer name…"
+                  value={nameQuery}
+                  onChange={(e) => {
+                    setNameQuery(e.target.value)
+                    setSelectedVehicle(null)
+                  }}
+                />
+              ) : (
+                <Input
+                  className="pl-8"
+                  placeholder="Search plate number…"
+                  value={plateQuery}
+                  onChange={(e) => {
+                    setPlateQuery(e.target.value)
+                    setSelectedVehicle(null)
+                  }}
+                />
+              )}
+            </div>
+
+            {!selectedVehicle && !isCustomerMode && plateQuery.trim() && (
               <div className="flex flex-col gap-1">
-                {(matches ?? []).map((v) => (
+                {(plateMatches ?? []).map((v) => (
                   <button
                     key={v.id}
                     className="flex items-center justify-between rounded-md border p-2 text-left text-sm hover:bg-accent"
@@ -331,9 +464,33 @@ export function RegisterPage() {
                     </span>
                   </button>
                 ))}
-                {(matches ?? []).length === 0 && (
+                {(plateMatches ?? []).length === 0 && (
                   <Button variant="outline" onClick={() => setShowNewVehicleForm(true)}>
                     No match — add "{plateQuery.trim().toUpperCase()}" as a new vehicle
+                  </Button>
+                )}
+              </div>
+            )}
+
+            {!selectedVehicle && isCustomerMode && nameQuery.trim() && (
+              <div className="flex flex-col gap-1">
+                {(customerMatches ?? []).map((row) => (
+                  <button
+                    key={row.key}
+                    className="flex items-center justify-between rounded-md border p-2 text-left text-sm hover:bg-accent"
+                    onClick={() => selectCustomerMatch(row)}
+                  >
+                    <span className="font-medium">{row.customerName}</span>
+                    <span className="text-muted-foreground">
+                      {row.vehicle
+                        ? `${row.vehicle.plate_is_placeholder ? 'No plate' : row.vehicle.plate_number} · ${row.vehicle.make ?? ''} ${row.vehicle.model ?? ''}`
+                        : 'No vehicle yet — tap to add one'}
+                    </span>
+                  </button>
+                ))}
+                {(customerMatches ?? []).length === 0 && (
+                  <Button variant="outline" onClick={() => setShowNewVehicleForm(true)}>
+                    No match — add a new vehicle for "{nameQuery.trim()}"
                   </Button>
                 )}
               </div>
@@ -342,7 +499,14 @@ export function RegisterPage() {
             {selectedVehicle && (
               <div className="flex items-center justify-between rounded-md border bg-accent/40 p-3">
                 <div>
-                  <div className="font-medium">{selectedVehicle.plate_number}</div>
+                  <div className="font-medium">
+                    {selectedVehicle.plate_number}
+                    {selectedVehicle.plate_is_placeholder && (
+                      <Badge variant="secondary" className="ml-2">
+                        No plate
+                      </Badge>
+                    )}
+                  </div>
                   <div className="text-sm text-muted-foreground">
                     {selectedVehicle.make} {selectedVehicle.model}
                   </div>
@@ -357,6 +521,7 @@ export function RegisterPage() {
                     onClick={() => {
                       setSelectedVehicle(null)
                       setPlateQuery('')
+                      setNameQuery('')
                     }}
                   >
                     Change
@@ -369,8 +534,8 @@ export function RegisterPage() {
               <div className="flex flex-col gap-2 rounded-md border p-3">
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <div className="flex flex-col gap-1">
-                    <Label>Plate</Label>
-                    <Input value={newPlate || plateQuery} onChange={(e) => setNewPlate(e.target.value)} />
+                    <Label>Plate{isCustomerMode ? ' (optional — leave blank if none yet)' : ''}</Label>
+                    <Input value={newPlate || (isCustomerMode ? '' : plateQuery)} onChange={(e) => setNewPlate(e.target.value)} />
                   </div>
                   <div className="flex flex-col gap-1">
                     <Label>Color</Label>
@@ -400,15 +565,19 @@ export function RegisterPage() {
                     </Select>
                   </div>
                   <div className="flex flex-col gap-1">
-                    <Label>Customer name (optional)</Label>
-                    <Input value={newCustomerName} onChange={(e) => setNewCustomerName(e.target.value)} />
+                    <Label>Customer name{isCustomerMode && !prefillCustomerId ? '' : ' (optional)'}</Label>
+                    <Input
+                      value={newCustomerName || (isCustomerMode ? nameQuery : '')}
+                      onChange={(e) => setNewCustomerName(e.target.value)}
+                      disabled={!!prefillCustomerId}
+                    />
                   </div>
                   <div className="flex flex-col gap-1">
                     <Label>Mobile (optional)</Label>
                     <Input value={newCustomerMobile} onChange={(e) => setNewCustomerMobile(e.target.value)} />
                   </div>
                 </div>
-                <Button disabled={creatingVehicle || !(newPlate || plateQuery).trim()} onClick={handleCreateVehicle}>
+                <Button disabled={creatingVehicle || !canSubmitNewVehicle} onClick={handleCreateVehicle}>
                   Add vehicle
                 </Button>
               </div>
@@ -561,6 +730,7 @@ export function RegisterPage() {
           model: updated.model,
           color: updated.color,
           vehicle_size_id: updated.vehicleSizeId,
+          plate_is_placeholder: false,
         }
         setSelectedVehicle(patched)
         setPlateQuery(updated.plateNumber)

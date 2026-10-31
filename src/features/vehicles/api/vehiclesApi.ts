@@ -57,35 +57,75 @@ export async function updateVehicle(
       model: input.model,
       color: input.color,
       vehicle_size_id: input.vehicleSizeId,
+      // Any manual edit through this form confirms whatever's now in the Plate field is a real
+      // plate, not a stand-in -- clears the flag even if the text happens to be unchanged.
+      plate_is_placeholder: false,
     })
     .eq('id', vehicleId)
   if (error) throw error
 }
 
+// A vehicle with no plate yet (brand new, not yet registered) still needs a unique identifier --
+// unique(tenant_id, plate_number) is unchanged, so the customer's name is stored INTO plate_number
+// itself when no real plate is given, deduped with a "(2)", "(3)", ... suffix on collision. Every
+// existing display site that just shows plate_number as a string keeps working unchanged;
+// plate_is_placeholder is purely a marker for the couple of UI spots that want to say "no plate".
 export async function createVehicle(input: {
   tenantId: string
   customerId: string | null
-  plateNumber: string
+  plateNumber: string | null
+  placeholderBase?: string | null
   make: string | null
   model: string | null
   color: string | null
   vehicleType: string | null
   vehicleSizeId: string | null
 }) {
-  const { data, error } = await supabase
-    .from('vehicles')
-    .insert({
-      tenant_id: input.tenantId,
-      customer_id: input.customerId,
-      plate_number: input.plateNumber,
-      make: input.make,
-      model: input.model,
-      color: input.color,
-      vehicle_type: input.vehicleType,
-      vehicle_size_id: input.vehicleSizeId,
-    })
-    .select('id')
-    .single()
-  if (error) throw error
-  return data.id
+  const realPlate = input.plateNumber?.trim()
+  if (realPlate) {
+    const { data, error } = await supabase
+      .from('vehicles')
+      .insert({
+        tenant_id: input.tenantId,
+        customer_id: input.customerId,
+        plate_number: realPlate,
+        make: input.make,
+        model: input.model,
+        color: input.color,
+        vehicle_type: input.vehicleType,
+        vehicle_size_id: input.vehicleSizeId,
+        plate_is_placeholder: false,
+      })
+      .select('id')
+      .single()
+    if (error) throw error
+    return { id: data.id, plateNumber: realPlate, plateIsPlaceholder: false }
+  }
+
+  const base = (input.placeholderBase || 'WALK-IN').trim().toUpperCase()
+  let attempt = base
+  // Bounded retry on unique_violation rather than a check-then-insert -- avoids a race between two
+  // cashiers registering a same-named customer at the same moment; the DB's own unique constraint
+  // is the actual arbiter.
+  for (let suffix = 1; suffix <= 20; suffix++) {
+    const { data, error } = await supabase
+      .from('vehicles')
+      .insert({
+        tenant_id: input.tenantId,
+        customer_id: input.customerId,
+        plate_number: attempt,
+        make: input.make,
+        model: input.model,
+        color: input.color,
+        vehicle_type: input.vehicleType,
+        vehicle_size_id: input.vehicleSizeId,
+        plate_is_placeholder: true,
+      })
+      .select('id')
+      .single()
+    if (!error) return { id: data.id, plateNumber: attempt, plateIsPlaceholder: true }
+    if (error.code !== '23505') throw error
+    attempt = `${base} (${suffix + 1})`
+  }
+  throw new Error('Could not generate a unique identifier for this vehicle -- try entering a plate number instead')
 }

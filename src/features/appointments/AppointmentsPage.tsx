@@ -139,7 +139,7 @@ export function AppointmentsPage() {
       if (newCustomerName.trim()) {
         customerId = await createCustomer({ tenantId: profile.tenantId, fullName: newCustomerName.trim(), mobile: newCustomerMobile.trim() || null })
       }
-      const vehicleId = await createVehicle({
+      const created = await createVehicle({
         tenantId: profile.tenantId,
         customerId,
         plateNumber: plateQuery.trim().toUpperCase(),
@@ -150,8 +150,8 @@ export function AppointmentsPage() {
         vehicleSizeId: vehicleSizeId || null,
       })
       pickVehicle({
-        id: vehicleId,
-        plate_number: plateQuery.trim().toUpperCase(),
+        id: created.id,
+        plate_number: created.plateNumber,
         vehicle_size_id: vehicleSizeId || null,
         customerName: newCustomerName.trim() || null,
       })

@@ -671,6 +671,7 @@ export interface Database {
           vehicle_size_id: string | null
           notes: string | null
           is_active: boolean
+          plate_is_placeholder: boolean
           created_at: string
         }
         Insert: {
@@ -686,6 +687,7 @@ export interface Database {
           vehicle_size_id?: string | null
           notes?: string | null
           is_active?: boolean
+          plate_is_placeholder?: boolean
           created_at?: string
         }
         Update: Partial<Database['public']['Tables']['vehicles']['Insert']>
