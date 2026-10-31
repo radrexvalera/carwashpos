@@ -411,7 +411,7 @@ export function JobQueuePage() {
                     <div className="flex gap-2">
                       <Button
                         variant="outline"
-                        className="w-full"
+                        className="flex-1"
                         onClick={() => {
                           setEditingJobId(job.id)
                           setEditingJobCompleted(true)
@@ -421,7 +421,7 @@ export function JobQueuePage() {
                       </Button>
                       <Button
                         variant="outline"
-                        className="w-full text-destructive"
+                        className="flex-1 text-destructive"
                         onClick={() => setCancelingJob({ id: job.id, plateNumber: job.plate_number })}
                       >
                         Cancel
