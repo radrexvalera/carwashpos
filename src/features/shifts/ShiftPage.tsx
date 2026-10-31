@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { useTenant } from '@/app/TenantProvider'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -44,6 +45,7 @@ export function ShiftPage() {
   const [loading, setLoading] = useState(true)
   const [locationId, setLocationId] = useState('')
   const [openingFloat, setOpeningFloat] = useState('')
+  const [dayType, setDayType] = useState<'regular' | 'holiday'>('regular')
   const [movementType, setMovementType] = useState<'cash_in' | 'cash_out'>('cash_out')
   const [movementAmount, setMovementAmount] = useState('')
   const [movementCategory, setMovementCategory] = useState('')
@@ -87,7 +89,12 @@ export function ShiftPage() {
     if (!profile || !locationId) return
     setSubmitting(true)
     try {
-      await openShift({ tenantId: profile.tenantId, locationId, openingFloat: Number(openingFloat) || 0 })
+      await openShift({
+        tenantId: profile.tenantId,
+        locationId,
+        openingFloat: Number(openingFloat) || 0,
+        isHoliday: dayType === 'holiday',
+      })
       toast.success('Shift opened')
       await reload()
     } catch (err) {
@@ -231,6 +238,23 @@ export function ShiftPage() {
                 placeholder="0.00"
               />
             </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="day-type">Day type</Label>
+              <Select value={dayType} onValueChange={(v) => setDayType(v as 'regular' | 'holiday')}>
+                <SelectTrigger id="day-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="regular">Regular Day</SelectItem>
+                  <SelectItem value="holiday">Holiday</SelectItem>
+                </SelectContent>
+              </Select>
+              {dayType === 'holiday' && (
+                <p className="text-xs text-muted-foreground">
+                  Wash commission will use the holiday rate for every job picked up during this shift.
+                </p>
+              )}
+            </div>
             <Button disabled={submitting} onClick={handleOpenShift}>
               Open shift
             </Button>
@@ -243,7 +267,10 @@ export function ShiftPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold">Active Shift</h1>
+        <h1 className="flex items-center gap-2 text-2xl font-semibold">
+          Active Shift
+          {shift.is_holiday && <Badge variant="destructive">Holiday</Badge>}
+        </h1>
         <p className="text-muted-foreground">Opened {new Date(shift.opened_at).toLocaleString()}</p>
       </div>
 

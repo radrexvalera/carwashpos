@@ -157,6 +157,7 @@ export interface Database {
           loyalty_redemption_value: number
           carwash_commission_rate: number
           other_commission_rate: number
+          holiday_carwash_commission_rate: number
           card_processing_fee_rate: number
           onboarding_completed_at: string | null
           logo_url: string | null
@@ -178,6 +179,7 @@ export interface Database {
           loyalty_redemption_value?: number
           carwash_commission_rate?: number
           other_commission_rate?: number
+          holiday_carwash_commission_rate?: number
           card_processing_fee_rate?: number
           onboarding_completed_at?: string | null
           logo_url?: string | null
@@ -796,6 +798,7 @@ export interface Database {
           variance: number | null
           variance_reason: string | null
           status: 'open' | 'closed'
+          is_holiday: boolean
         }
         Insert: {
           id?: string
@@ -804,6 +807,7 @@ export interface Database {
           cashier_id: string
           opened_at?: string
           opening_float?: number
+          is_holiday?: boolean
         }
         Update: never
         Relationships: []

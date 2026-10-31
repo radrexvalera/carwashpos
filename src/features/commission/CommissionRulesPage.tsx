@@ -72,6 +72,7 @@ export function CommissionRulesPage() {
 
   const [carwashRate, setCarwashRate] = useState('')
   const [otherRate, setOtherRate] = useState('')
+  const [holidayCarwashRate, setHolidayCarwashRate] = useState('')
   const [savingPolicy, setSavingPolicy] = useState(false)
 
   const [cardFeeRate, setCardFeeRate] = useState('')
@@ -91,6 +92,7 @@ export function CommissionRulesPage() {
       if (settings) {
         setCarwashRate(String(settings.carwash_commission_rate))
         setOtherRate(String(settings.other_commission_rate))
+        setHolidayCarwashRate(String(settings.holiday_carwash_commission_rate))
         setCardFeeRate(String(settings.card_processing_fee_rate))
       }
 
@@ -258,13 +260,18 @@ export function CommissionRulesPage() {
     if (!profile) return
     const cw = Number(carwashRate)
     const other = Number(otherRate)
-    if (Number.isNaN(cw) || cw < 0 || Number.isNaN(other) || other < 0) {
+    const holiday = Number(holidayCarwashRate)
+    if (Number.isNaN(cw) || cw < 0 || Number.isNaN(other) || other < 0 || Number.isNaN(holiday) || holiday < 0) {
       toast.error('Enter valid rates')
       return
     }
     setSavingPolicy(true)
     try {
-      await updateSettings(profile.tenantId, { carwash_commission_rate: cw, other_commission_rate: other })
+      await updateSettings(profile.tenantId, {
+        carwash_commission_rate: cw,
+        other_commission_rate: other,
+        holiday_carwash_commission_rate: holiday,
+      })
       toast.success('Saved')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to save commission policy')
@@ -308,9 +315,11 @@ export function CommissionRulesPage() {
         <CardContent className="flex flex-col gap-3">
           <p className="text-sm text-muted-foreground">
             When a job is completed, each service earns commission off its own revenue -- Wash services at the fixed
-            rate on the left, every other service at the rate on the right (unless overridden below). Those amounts
-            are added together into one pool, split evenly among every crew member assigned anywhere on the job.
-            Which services count as "Wash" is set per category on the Service Categories page.
+            rate below, every other service at the "Other" rate (unless overridden below). Those amounts are added
+            together into one pool, split evenly among every crew member assigned anywhere on the job. Which services
+            count as "Wash" is set per category on the Service Categories page. The Holiday rate applies instead of
+            the regular Wash rate for any job picked up while a shift at that location is open and marked Holiday
+            (picked when opening a shift on My Shift).
           </p>
           <div className="flex flex-wrap items-end gap-3">
             <div className="flex flex-col gap-1.5">
@@ -320,6 +329,17 @@ export function CommissionRulesPage() {
             <div className="flex flex-col gap-1.5">
               <Label>Other services (default)</Label>
               <Input type="number" step="0.01" min="0" className="w-28" value={otherRate} onChange={(e) => setOtherRate(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Wash services (Holiday)</Label>
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                className="w-28"
+                value={holidayCarwashRate}
+                onChange={(e) => setHolidayCarwashRate(e.target.value)}
+              />
             </div>
             <Button disabled={savingPolicy} onClick={savePolicy}>
               Save policy

@@ -19,7 +19,7 @@ export async function getActiveShift() {
   return data
 }
 
-export async function openShift(input: { tenantId: string; locationId: string; openingFloat: number }) {
+export async function openShift(input: { tenantId: string; locationId: string; openingFloat: number; isHoliday?: boolean }) {
   const { data: employeeId, error: employeeError } = await supabase.rpc('current_employee_id')
   if (employeeError) throw employeeError
   if (!employeeId) throw new Error('No employee record linked to your login -- ask an admin to add you as an employee.')
@@ -31,6 +31,7 @@ export async function openShift(input: { tenantId: string; locationId: string; o
       location_id: input.locationId,
       cashier_id: employeeId,
       opening_float: input.openingFloat,
+      is_holiday: input.isHoliday ?? false,
     })
     .select('*')
     .single()
