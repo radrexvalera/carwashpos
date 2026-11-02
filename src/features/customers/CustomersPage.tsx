@@ -13,14 +13,17 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { formatMoney } from '@/lib/money'
-import { getSaleDetail, listSalesByCustomer, type SaleDetail, type SaleListRow } from '@/features/sales/api/salesApi'
+import { listVehicleSizes, type VehicleSize } from '@/features/catalog/api/catalogApi'
+import { createVehicle, updateVehicle } from '@/features/vehicles/api/vehiclesApi'
+import { getSaleDetail, listSalesByPlate, type SaleDetail, type SaleListRow } from '@/features/sales/api/salesApi'
 import {
   createCustomer,
+  linkVehicleCustomer,
   listCustomerVehicles,
-  listCustomers,
+  listVehicleCustomers,
   updateCustomer,
-  type CustomerRow,
   type CustomerVehicle,
+  type VehicleCustomerRow,
 } from './api/customersApi'
 
 // A Postgrest error IS an Error instance in practice, but this is defensive against anything that
@@ -39,7 +42,32 @@ const CUSTOMER_TYPE_LABELS: Record<string, string> = {
   company: 'Company',
 }
 
-interface CustomerFormState {
+interface CreateFormState {
+  plateNumber: string
+  make: string
+  model: string
+  color: string
+  vehicleSizeId: string
+  customerName: string
+  mobile: string
+}
+
+const EMPTY_CREATE_FORM: CreateFormState = {
+  plateNumber: '',
+  make: '',
+  model: '',
+  color: '',
+  vehicleSizeId: '',
+  customerName: '',
+  mobile: '',
+}
+
+interface EditFormState {
+  plateNumber: string
+  make: string
+  model: string
+  color: string
+  vehicleSizeId: string
   customerType: 'individual' | 'company'
   fullName: string
   mobile: string
@@ -49,95 +77,23 @@ interface CustomerFormState {
   isActive: boolean
 }
 
-const EMPTY_FORM: CustomerFormState = {
-  customerType: 'individual',
-  fullName: '',
-  mobile: '',
-  email: '',
-  address: '',
-  notes: '',
-  isActive: true,
-}
-
-function CustomerFormFields({
-  idPrefix,
-  form,
-  onChange,
-  showActiveToggle,
-}: {
-  idPrefix: string
-  form: CustomerFormState
-  onChange: (next: CustomerFormState) => void
-  showActiveToggle: boolean
-}) {
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor={`${idPrefix}-type`}>Type</Label>
-        <Select value={form.customerType} onValueChange={(v) => onChange({ ...form, customerType: v as 'individual' | 'company' })}>
-          <SelectTrigger id={`${idPrefix}-type`}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {Object.entries(CUSTOMER_TYPE_LABELS).map(([value, label]) => (
-              <SelectItem key={value} value={value}>
-                {label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor={`${idPrefix}-name`}>{form.customerType === 'company' ? 'Company name' : 'Full name'}</Label>
-        <Input id={`${idPrefix}-name`} value={form.fullName} onChange={(e) => onChange({ ...form, fullName: e.target.value })} required />
-      </div>
-      <div className="flex gap-3">
-        <div className="flex flex-1 flex-col gap-1.5">
-          <Label htmlFor={`${idPrefix}-mobile`}>Mobile</Label>
-          <Input id={`${idPrefix}-mobile`} value={form.mobile} onChange={(e) => onChange({ ...form, mobile: e.target.value })} />
-        </div>
-        <div className="flex flex-1 flex-col gap-1.5">
-          <Label htmlFor={`${idPrefix}-email`}>Email</Label>
-          <Input id={`${idPrefix}-email`} type="email" value={form.email} onChange={(e) => onChange({ ...form, email: e.target.value })} />
-        </div>
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor={`${idPrefix}-address`}>Address</Label>
-        <Input id={`${idPrefix}-address`} value={form.address} onChange={(e) => onChange({ ...form, address: e.target.value })} />
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor={`${idPrefix}-notes`}>Notes</Label>
-        <Textarea id={`${idPrefix}-notes`} value={form.notes} onChange={(e) => onChange({ ...form, notes: e.target.value })} rows={3} />
-      </div>
-      {showActiveToggle && (
-        <label className="flex items-center justify-between gap-2 text-sm">
-          <span>
-            Active
-            <span className="block text-xs text-muted-foreground">Inactive customers are kept for history but hidden from pickers.</span>
-          </span>
-          <Switch checked={form.isActive} onCheckedChange={(c) => onChange({ ...form, isActive: c })} />
-        </label>
-      )}
-    </div>
-  )
-}
-
 export function CustomersPage() {
   const { profile } = useTenant()
-  const [customers, setCustomers] = useState<CustomerRow[]>([])
+  const [rows, setRows] = useState<VehicleCustomerRow[]>([])
+  const [sizes, setSizes] = useState<VehicleSize[]>([])
   const [loading, setLoading] = useState(true)
   const [query, setQuery] = useState('')
 
   const [creating, setCreating] = useState(false)
-  const [createForm, setCreateForm] = useState<CustomerFormState>(EMPTY_FORM)
+  const [createForm, setCreateForm] = useState<CreateFormState>(EMPTY_CREATE_FORM)
   const [createSubmitting, setCreateSubmitting] = useState(false)
 
-  const [editingCustomer, setEditingCustomer] = useState<CustomerRow | null>(null)
-  const [editForm, setEditForm] = useState<CustomerFormState>(EMPTY_FORM)
+  const [editingRow, setEditingRow] = useState<VehicleCustomerRow | null>(null)
+  const [editForm, setEditForm] = useState<EditFormState | null>(null)
   const [editSubmitting, setEditSubmitting] = useState(false)
 
-  const [profileCustomer, setProfileCustomer] = useState<CustomerRow | null>(null)
-  const [profileVehicles, setProfileVehicles] = useState<CustomerVehicle[]>([])
+  const [profileRow, setProfileRow] = useState<VehicleCustomerRow | null>(null)
+  const [profileSiblingVehicles, setProfileSiblingVehicles] = useState<CustomerVehicle[]>([])
   const [profileSales, setProfileSales] = useState<SaleListRow[]>([])
   const [profileLoading, setProfileLoading] = useState(false)
 
@@ -148,7 +104,7 @@ export function CustomersPage() {
   async function reload(searchQuery = query) {
     setLoading(true)
     try {
-      setCustomers(await listCustomers(searchQuery))
+      setRows(await listVehicleCustomers(searchQuery))
     } catch (err) {
       toast.error(errorMessage(err, 'Failed to load customers'))
     } finally {
@@ -158,82 +114,139 @@ export function CustomersPage() {
 
   useEffect(() => {
     reload()
+    listVehicleSizes()
+      .then((data) => setSizes(data.filter((s) => s.is_active)))
+      .catch((err) => toast.error(errorMessage(err, 'Failed to load vehicle sizes')))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  const canSubmitCreate = !!(createForm.plateNumber.trim() || createForm.customerName.trim())
+
   async function handleCreateSubmit(event: FormEvent) {
     event.preventDefault()
-    if (!profile || !createForm.fullName.trim()) return
+    if (!profile || !canSubmitCreate) return
     setCreateSubmitting(true)
     try {
-      await createCustomer({
+      const customerName = createForm.customerName.trim()
+      let customerId: string | null = null
+      if (customerName) {
+        customerId = await createCustomer({
+          tenantId: profile.tenantId,
+          customerType: 'individual',
+          fullName: customerName,
+          mobile: createForm.mobile.trim() || null,
+          email: null,
+          address: null,
+          notes: null,
+        })
+      }
+      await createVehicle({
         tenantId: profile.tenantId,
-        customerType: createForm.customerType,
-        fullName: createForm.fullName.trim(),
-        mobile: createForm.mobile.trim() || null,
-        email: createForm.email.trim() || null,
-        address: createForm.address.trim() || null,
-        notes: createForm.notes.trim() || null,
+        customerId,
+        plateNumber: createForm.plateNumber.trim() || null,
+        placeholderBase: customerName || null,
+        make: createForm.make.trim() || null,
+        model: createForm.model.trim() || null,
+        color: createForm.color.trim() || null,
+        vehicleType: null,
+        vehicleSizeId: createForm.vehicleSizeId || null,
       })
-      toast.success('Customer added')
+      toast.success('Vehicle added')
       setCreating(false)
-      setCreateForm(EMPTY_FORM)
+      setCreateForm(EMPTY_CREATE_FORM)
       await reload()
     } catch (err) {
-      toast.error(errorMessage(err, 'Failed to add customer'))
+      toast.error(errorMessage(err, 'Failed to add vehicle'))
     } finally {
       setCreateSubmitting(false)
     }
   }
 
-  function openEdit(customer: CustomerRow) {
-    setEditingCustomer(customer)
+  function openEdit(row: VehicleCustomerRow) {
+    setProfileRow(null)
+    setEditingRow(row)
     setEditForm({
-      customerType: customer.customerType,
-      fullName: customer.fullName,
-      mobile: customer.mobile ?? '',
-      email: customer.email ?? '',
-      address: customer.address ?? '',
-      notes: customer.notes ?? '',
-      isActive: customer.isActive,
+      plateNumber: row.plateIsPlaceholder ? '' : row.plateNumber,
+      make: row.make ?? '',
+      model: row.model ?? '',
+      color: row.color ?? '',
+      vehicleSizeId: row.vehicleSizeId ?? '',
+      customerType: row.customerType ?? 'individual',
+      fullName: row.customerName ?? '',
+      mobile: row.mobile ?? '',
+      email: row.email ?? '',
+      address: row.address ?? '',
+      notes: row.notes ?? '',
+      isActive: row.customerActive,
     })
   }
 
   async function handleEditSubmit(event: FormEvent) {
     event.preventDefault()
-    if (!editingCustomer || !editForm.fullName.trim()) return
+    if (!editingRow || !editForm || !profile) return
+    const hasCustomer = !!editingRow.customerId
+    if (hasCustomer && !editForm.fullName.trim()) {
+      toast.error('Customer name is required')
+      return
+    }
     setEditSubmitting(true)
     try {
-      await updateCustomer(editingCustomer.id, {
-        customerType: editForm.customerType,
-        fullName: editForm.fullName.trim(),
-        mobile: editForm.mobile.trim() || null,
-        email: editForm.email.trim() || null,
-        address: editForm.address.trim() || null,
-        notes: editForm.notes.trim() || null,
-        isActive: editForm.isActive,
-      })
+      if (editForm.plateNumber.trim()) {
+        await updateVehicle(editingRow.vehicleId, {
+          plateNumber: editForm.plateNumber.trim().toUpperCase(),
+          make: editForm.make.trim() || null,
+          model: editForm.model.trim() || null,
+          color: editForm.color.trim() || null,
+          vehicleSizeId: editForm.vehicleSizeId || null,
+        })
+      }
+
+      if (hasCustomer) {
+        await updateCustomer(editingRow.customerId as string, {
+          customerType: editForm.customerType,
+          fullName: editForm.fullName.trim(),
+          mobile: editForm.mobile.trim() || null,
+          email: editForm.email.trim() || null,
+          address: editForm.address.trim() || null,
+          notes: editForm.notes.trim() || null,
+          isActive: editForm.isActive,
+        })
+      } else if (editForm.fullName.trim()) {
+        const newCustomerId = await createCustomer({
+          tenantId: profile.tenantId,
+          customerType: editForm.customerType,
+          fullName: editForm.fullName.trim(),
+          mobile: editForm.mobile.trim() || null,
+          email: editForm.email.trim() || null,
+          address: editForm.address.trim() || null,
+          notes: editForm.notes.trim() || null,
+        })
+        await linkVehicleCustomer(editingRow.vehicleId, newCustomerId)
+      }
+
       toast.success('Saved')
-      setEditingCustomer(null)
+      setEditingRow(null)
       await reload()
     } catch (err) {
-      toast.error(errorMessage(err, 'Failed to save customer'))
+      toast.error(errorMessage(err, 'Failed to save'))
     } finally {
       setEditSubmitting(false)
     }
   }
 
-  function openProfile(customer: CustomerRow) {
-    setProfileCustomer(customer)
-    setProfileVehicles([])
+  function openProfile(row: VehicleCustomerRow) {
+    setProfileRow(row)
+    setProfileSiblingVehicles([])
     setProfileSales([])
     setProfileLoading(true)
-    Promise.all([listCustomerVehicles(customer.id), listSalesByCustomer(customer.id)])
-      .then(([vehicles, sales]) => {
-        setProfileVehicles(vehicles)
+    const salesPromise = listSalesByPlate(row.plateNumber)
+    const siblingsPromise = row.customerId ? listCustomerVehicles(row.customerId) : Promise.resolve<CustomerVehicle[]>([])
+    Promise.all([salesPromise, siblingsPromise])
+      .then(([sales, siblings]) => {
         setProfileSales(sales)
+        setProfileSiblingVehicles(siblings.filter((v) => v.id !== row.vehicleId))
       })
-      .catch((err) => toast.error(errorMessage(err, 'Failed to load customer history')))
+      .catch((err) => toast.error(errorMessage(err, 'Failed to load history')))
       .finally(() => setProfileLoading(false))
   }
 
@@ -256,9 +269,11 @@ export function CustomersPage() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">Customers</h1>
-          <p className="text-muted-foreground">Edit contact details and look up a customer's transaction history.</p>
+          <p className="text-muted-foreground">
+            Every registered vehicle, plate-only walk-ins included — edit contact details and look up transaction history.
+          </p>
         </div>
-        <Button onClick={() => setCreating(true)}>New customer</Button>
+        <Button onClick={() => setCreating(true)}>New vehicle</Button>
       </div>
 
       <Card>
@@ -266,8 +281,8 @@ export function CustomersPage() {
           <div className="flex flex-col gap-1.5">
             <Label>Search</Label>
             <Input
-              placeholder="Name or mobile number"
-              className="w-64"
+              placeholder="Plate number, customer name, or mobile"
+              className="w-72"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && reload()}
@@ -295,41 +310,52 @@ export function CustomersPage() {
         <CardContent className="pt-6">
           {loading ? (
             <p className="text-muted-foreground">Loading…</p>
-          ) : customers.length === 0 ? (
-            <p className="text-muted-foreground">No customers found.</p>
+          ) : rows.length === 0 ? (
+            <p className="text-muted-foreground">No vehicles found.</p>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Name</TableHead>
+                  <TableHead>Plate</TableHead>
+                  <TableHead>Vehicle</TableHead>
+                  <TableHead>Customer</TableHead>
                   <TableHead>Mobile</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Vehicles</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead />
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {customers.map((c) => (
-                  <TableRow key={c.id}>
+                {rows.map((row) => (
+                  <TableRow key={row.vehicleId}>
                     <TableCell>
                       <div className="flex items-center gap-2 font-medium">
-                        {c.fullName}
-                        {c.customerType === 'company' && <Badge variant="outline">Company</Badge>}
+                        {row.plateIsPlaceholder ? '—' : row.plateNumber}
+                        {row.plateIsPlaceholder && <Badge variant="outline">No plate</Badge>}
                       </div>
                     </TableCell>
-                    <TableCell>{c.mobile ?? '—'}</TableCell>
-                    <TableCell>{c.email ?? '—'}</TableCell>
-                    <TableCell className="text-muted-foreground">{c.plates.length > 0 ? c.plates.join(', ') : '—'}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {[row.make, row.model, row.color].filter(Boolean).join(' ') || '—'}
+                    </TableCell>
                     <TableCell>
-                      {c.isActive ? <Badge variant="outline">Active</Badge> : <Badge variant="destructive">Inactive</Badge>}
+                      {row.customerName ? (
+                        <div className="flex items-center gap-2">
+                          {row.customerName}
+                          {row.customerType === 'company' && <Badge variant="outline">Company</Badge>}
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground italic">Walk-in</span>
+                      )}
+                    </TableCell>
+                    <TableCell>{row.mobile ?? '—'}</TableCell>
+                    <TableCell>
+                      {row.vehicleActive ? <Badge variant="outline">Active</Badge> : <Badge variant="destructive">Inactive</Badge>}
                     </TableCell>
                     <TableCell>
                       <div className="flex justify-end gap-2">
-                        <Button size="sm" variant="outline" onClick={() => openProfile(c)}>
+                        <Button size="sm" variant="outline" onClick={() => openProfile(row)}>
                           History
                         </Button>
-                        <Button size="sm" variant="outline" onClick={() => openEdit(c)}>
+                        <Button size="sm" variant="outline" onClick={() => openEdit(row)}>
                           Edit
                         </Button>
                       </div>
@@ -345,42 +371,222 @@ export function CustomersPage() {
       <Dialog open={creating} onOpenChange={(o) => !o && setCreating(false)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>New customer</DialogTitle>
+            <DialogTitle>New vehicle</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleCreateSubmit} className="flex flex-col gap-3">
-            <CustomerFormFields idPrefix="create" form={createForm} onChange={setCreateForm} showActiveToggle={false} />
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="create-plate">Plate{createForm.customerName.trim() ? ' (optional — leave blank if none yet)' : ''}</Label>
+                <Input
+                  id="create-plate"
+                  value={createForm.plateNumber}
+                  onChange={(e) => setCreateForm({ ...createForm, plateNumber: e.target.value })}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="create-color">Color</Label>
+                <Input id="create-color" value={createForm.color} onChange={(e) => setCreateForm({ ...createForm, color: e.target.value })} />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="create-make">Make</Label>
+                <Input
+                  id="create-make"
+                  value={createForm.make}
+                  onChange={(e) => setCreateForm({ ...createForm, make: e.target.value })}
+                  placeholder="Toyota"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="create-model">Model</Label>
+                <Input
+                  id="create-model"
+                  value={createForm.model}
+                  onChange={(e) => setCreateForm({ ...createForm, model: e.target.value })}
+                  placeholder="Fortuner"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="create-size">Vehicle size</Label>
+                <Select value={createForm.vehicleSizeId} onValueChange={(v) => setCreateForm({ ...createForm, vehicleSizeId: v })}>
+                  <SelectTrigger id="create-size">
+                    <SelectValue placeholder="Select size" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sizes.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="create-customer">Customer name (optional)</Label>
+                <Input
+                  id="create-customer"
+                  value={createForm.customerName}
+                  onChange={(e) => setCreateForm({ ...createForm, customerName: e.target.value })}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="create-mobile">Mobile (optional)</Label>
+                <Input id="create-mobile" value={createForm.mobile} onChange={(e) => setCreateForm({ ...createForm, mobile: e.target.value })} />
+              </div>
+            </div>
             <DialogFooter>
-              <Button type="submit" disabled={createSubmitting}>
-                Add customer
+              <Button type="submit" disabled={createSubmitting || !canSubmitCreate}>
+                Add vehicle
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!editingCustomer} onOpenChange={(o) => !o && setEditingCustomer(null)}>
-        <DialogContent>
+      <Dialog open={!!editingRow} onOpenChange={(o) => !o && setEditingRow(null)}>
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Edit customer</DialogTitle>
+            <DialogTitle>Edit vehicle & customer</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleEditSubmit} className="flex flex-col gap-3">
-            <CustomerFormFields idPrefix="edit" form={editForm} onChange={setEditForm} showActiveToggle />
-            <DialogFooter>
-              <Button type="submit" disabled={editSubmitting}>
-                Save
-              </Button>
-            </DialogFooter>
-          </form>
+          {editForm && (
+            <form onSubmit={handleEditSubmit} className="flex flex-col gap-4">
+              <div className="flex flex-col gap-3">
+                <div className="text-sm font-medium text-muted-foreground">Vehicle</div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="edit-plate">Plate</Label>
+                    <Input
+                      id="edit-plate"
+                      value={editForm.plateNumber}
+                      onChange={(e) => setEditForm({ ...editForm, plateNumber: e.target.value })}
+                      placeholder={editingRow?.plateIsPlaceholder ? 'No plate yet' : undefined}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="edit-color">Color</Label>
+                    <Input id="edit-color" value={editForm.color} onChange={(e) => setEditForm({ ...editForm, color: e.target.value })} />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="edit-make">Make</Label>
+                    <Input id="edit-make" value={editForm.make} onChange={(e) => setEditForm({ ...editForm, make: e.target.value })} />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="edit-model">Model</Label>
+                    <Input id="edit-model" value={editForm.model} onChange={(e) => setEditForm({ ...editForm, model: e.target.value })} />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="edit-size">Vehicle size</Label>
+                    <Select value={editForm.vehicleSizeId} onValueChange={(v) => setEditForm({ ...editForm, vehicleSizeId: v })}>
+                      <SelectTrigger id="edit-size">
+                        <SelectValue placeholder="Select size" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {sizes.map((s) => (
+                          <SelectItem key={s.id} value={s.id}>
+                            {s.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3 border-t pt-3">
+                <div className="text-sm font-medium text-muted-foreground">
+                  Customer {!editingRow?.customerId && <span className="font-normal">(optional — leave name blank to keep this a walk-in)</span>}
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="edit-cust-type">Type</Label>
+                  <Select
+                    value={editForm.customerType}
+                    onValueChange={(v) => setEditForm({ ...editForm, customerType: v as 'individual' | 'company' })}
+                  >
+                    <SelectTrigger id="edit-cust-type">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(CUSTOMER_TYPE_LABELS).map(([value, label]) => (
+                        <SelectItem key={value} value={value}>
+                          {label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="edit-cust-name">{editForm.customerType === 'company' ? 'Company name' : 'Full name'}</Label>
+                  <Input
+                    id="edit-cust-name"
+                    value={editForm.fullName}
+                    onChange={(e) => setEditForm({ ...editForm, fullName: e.target.value })}
+                  />
+                </div>
+                <div className="flex gap-3">
+                  <div className="flex flex-1 flex-col gap-1.5">
+                    <Label htmlFor="edit-cust-mobile">Mobile</Label>
+                    <Input
+                      id="edit-cust-mobile"
+                      value={editForm.mobile}
+                      onChange={(e) => setEditForm({ ...editForm, mobile: e.target.value })}
+                    />
+                  </div>
+                  <div className="flex flex-1 flex-col gap-1.5">
+                    <Label htmlFor="edit-cust-email">Email</Label>
+                    <Input
+                      id="edit-cust-email"
+                      type="email"
+                      value={editForm.email}
+                      onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="edit-cust-address">Address</Label>
+                  <Input
+                    id="edit-cust-address"
+                    value={editForm.address}
+                    onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="edit-cust-notes">Notes</Label>
+                  <Textarea
+                    id="edit-cust-notes"
+                    value={editForm.notes}
+                    onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+                    rows={3}
+                  />
+                </div>
+                {(editingRow?.customerId || editForm.fullName.trim()) && (
+                  <label className="flex items-center justify-between gap-2 text-sm">
+                    <span>
+                      Active
+                      <span className="block text-xs text-muted-foreground">
+                        Inactive customers are kept for history but hidden from pickers.
+                      </span>
+                    </span>
+                    <Switch checked={editForm.isActive} onCheckedChange={(c) => setEditForm({ ...editForm, isActive: c })} />
+                  </label>
+                )}
+              </div>
+
+              <DialogFooter>
+                <Button type="submit" disabled={editSubmitting}>
+                  Save
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!profileCustomer} onOpenChange={(o) => !o && setProfileCustomer(null)}>
+      <Dialog open={!!profileRow} onOpenChange={(o) => !o && setProfileRow(null)}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              {profileCustomer?.fullName}
-              {profileCustomer?.customerType === 'company' && <Badge variant="outline">Company</Badge>}
-              {profileCustomer && !profileCustomer.isActive && <Badge variant="destructive">Inactive</Badge>}
+              {profileRow?.plateIsPlaceholder ? profileRow?.customerName : profileRow?.plateNumber}
+              {profileRow?.plateIsPlaceholder && <Badge variant="outline">No plate</Badge>}
+              {profileRow && !profileRow.vehicleActive && <Badge variant="destructive">Inactive</Badge>}
             </DialogTitle>
           </DialogHeader>
 
@@ -390,7 +596,6 @@ export function CustomersPage() {
             <Tabs defaultValue="overview">
               <TabsList>
                 <TabsTrigger value="overview">Overview</TabsTrigger>
-                <TabsTrigger value="vehicles">Vehicles ({profileVehicles.length})</TabsTrigger>
                 <TabsTrigger value="transactions">Transactions ({profileSales.length})</TabsTrigger>
               </TabsList>
 
@@ -409,61 +614,64 @@ export function CustomersPage() {
                     </CardContent>
                   </Card>
                 </div>
+
                 <div className="flex flex-col gap-1.5 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Mobile</span>
-                    <span>{profileCustomer?.mobile ?? '—'}</span>
+                    <span className="text-muted-foreground">Vehicle</span>
+                    <span>{[profileRow?.make, profileRow?.model, profileRow?.color].filter(Boolean).join(' ') || '—'}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Email</span>
-                    <span>{profileCustomer?.email ?? '—'}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Address</span>
-                    <span className="text-right">{profileCustomer?.address ?? '—'}</span>
-                  </div>
-                  {profileCustomer?.notes && (
-                    <div className="flex flex-col gap-1 border-t pt-2">
-                      <span className="text-muted-foreground">Notes</span>
-                      <span className="whitespace-pre-wrap">{profileCustomer.notes}</span>
-                    </div>
+                </div>
+
+                <div className="flex flex-col gap-1.5 border-t pt-2 text-sm">
+                  {profileRow?.customerName ? (
+                    <>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Customer</span>
+                        <span>
+                          {profileRow.customerName}
+                          {profileRow.customerType === 'company' && <Badge variant="outline" className="ml-2">Company</Badge>}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Mobile</span>
+                        <span>{profileRow.mobile ?? '—'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Email</span>
+                        <span>{profileRow.email ?? '—'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Address</span>
+                        <span className="text-right">{profileRow.address ?? '—'}</span>
+                      </div>
+                      {profileRow.notes && (
+                        <div className="flex flex-col gap-1 border-t pt-2">
+                          <span className="text-muted-foreground">Notes</span>
+                          <span className="whitespace-pre-wrap">{profileRow.notes}</span>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-muted-foreground">No customer linked — plate-only walk-in.</p>
                   )}
                 </div>
-                <Button variant="outline" onClick={() => profileCustomer && openEdit(profileCustomer)}>
-                  Edit customer
-                </Button>
-              </TabsContent>
 
-              <TabsContent value="vehicles">
-                {profileVehicles.length === 0 ? (
-                  <p className="text-muted-foreground">No vehicles on file.</p>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Plate</TableHead>
-                        <TableHead>Vehicle</TableHead>
-                        <TableHead>Status</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {profileVehicles.map((v) => (
-                        <TableRow key={v.id}>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              {v.plateNumber}
-                              {v.plateIsPlaceholder && <Badge variant="outline">No plate</Badge>}
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {[v.make, v.model, v.color].filter(Boolean).join(' ') || '—'}
-                          </TableCell>
-                          <TableCell>{v.isActive ? <Badge variant="outline">Active</Badge> : <Badge variant="destructive">Inactive</Badge>}</TableCell>
-                        </TableRow>
+                {profileSiblingVehicles.length > 0 && (
+                  <div className="flex flex-col gap-1 border-t pt-2 text-sm">
+                    <span className="text-muted-foreground">Other vehicles for this customer</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {profileSiblingVehicles.map((v) => (
+                        <Badge key={v.id} variant="outline">
+                          {v.plateIsPlaceholder ? 'No plate' : v.plateNumber}
+                        </Badge>
                       ))}
-                    </TableBody>
-                  </Table>
+                    </div>
+                  </div>
                 )}
+
+                <Button variant="outline" onClick={() => profileRow && openEdit(profileRow)}>
+                  Edit
+                </Button>
               </TabsContent>
 
               <TabsContent value="transactions">
@@ -475,7 +683,6 @@ export function CustomersPage() {
                       <TableRow>
                         <TableHead>Date</TableHead>
                         <TableHead>Sale #</TableHead>
-                        <TableHead>Plate</TableHead>
                         <TableHead>Total</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead />
@@ -486,7 +693,6 @@ export function CustomersPage() {
                         <TableRow key={s.id}>
                           <TableCell>{new Date(s.createdAt).toLocaleDateString()}</TableCell>
                           <TableCell>{s.saleNumber}</TableCell>
-                          <TableCell>{s.plateNumber ?? '—'}</TableCell>
                           <TableCell>{formatMoney(s.total)}</TableCell>
                           <TableCell>
                             <Badge variant={s.status === 'completed' ? 'outline' : 'destructive'}>
