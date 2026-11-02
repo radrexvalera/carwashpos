@@ -60,6 +60,7 @@ const CustomerInsightsPage = lazyWithRetry(() =>
   import('@/features/reports/CustomerInsightsPage').then((m) => ({ default: m.CustomerInsightsPage })),
 )
 const AppointmentsPage =lazyWithRetry(() => import('@/features/appointments/AppointmentsPage').then((m) => ({ default: m.AppointmentsPage })))
+const CustomersPage = lazyWithRetry(() => import('@/features/customers/CustomersPage').then((m) => ({ default: m.CustomersPage })))
 const TransactionsPage = lazyWithRetry(() => import('@/features/sales/TransactionsPage').then((m) => ({ default: m.TransactionsPage })))
 const OwnerConsolePage = lazyWithRetry(() => import('@/features/owner/OwnerConsolePage').then((m) => ({ default: m.OwnerConsolePage })))
 
@@ -89,6 +90,14 @@ export default function App() {
                 <Route path="/register" element={<RegisterPage />} />
                 <Route path="/appointments" element={<AppointmentsPage />} />
                 <Route path="/transactions" element={<TransactionsPage />} />
+                <Route
+                  path="/customers"
+                  element={
+                    <RoleGuard allowedRoles={['admin', 'manager']}>
+                      <CustomersPage />
+                    </RoleGuard>
+                  }
+                />
                 <Route path="/jobs" element={<JobQueuePage />} />
                 <Route path="/jobs/:jobId/pay" element={<JobPaymentPage />} />
                 <Route path="/shift" element={<ShiftPage />} />

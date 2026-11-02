@@ -7,6 +7,7 @@ import {
   ChevronRight,
   CircleHelp,
   Clock,
+  Contact,
   DollarSign,
   FlaskConical,
   FolderTree,
@@ -64,6 +65,7 @@ const navEntries: NavEntry[] = [
   { kind: 'leaf', to: '/jobs', label: 'Job Queue', icon: ListChecks },
   { kind: 'leaf', to: '/shift', label: 'My Shift', icon: Clock },
   { kind: 'leaf', to: '/transactions', label: 'Transactions', icon: Receipt },
+  { kind: 'leaf', to: '/customers', label: 'Customers', icon: Contact, roles: ['admin', 'manager'] },
   {
     kind: 'group',
     label: 'Reports',

@@ -89,6 +89,21 @@ export async function listSalesByPlate(plateNumber: string): Promise<SaleListRow
   return buildSaleRows(sales ?? [])
 }
 
+// customer_id is resolved server-side by create_sale() from the job's vehicle at the time of
+// sale, so this can filter directly rather than going back through vehicles/jobs like
+// listSalesByPlate does. Ignores the date range for the same reason as listSalesByPlate -- this
+// is "this customer's full history," not "this week's."
+export async function listSalesByCustomer(customerId: string): Promise<SaleListRow[]> {
+  const { data: sales, error } = await supabase
+    .from('sales')
+    .select('*')
+    .eq('customer_id', customerId)
+    .order('created_at', { ascending: false })
+    .limit(200)
+  if (error) throw error
+  return buildSaleRows(sales ?? [])
+}
+
 export interface SaleDetail {
   id: string
   status: string
