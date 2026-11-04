@@ -4,24 +4,30 @@ import { useTenant } from '@/app/TenantProvider'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { formatMoney } from '@/lib/money'
 import { safeSetItem } from '@/lib/safeStorage'
 import { listLocations } from '@/features/catalog/api/catalogApi'
 import {
   closeShift,
+  correctShiftCountedCash,
   getActiveShift,
   getShiftSummary,
   listCashMovements,
+  listRecentShifts,
   openShift,
   recordCashMovement,
   type CashierShift,
   type CashMovement,
   type ShiftSummary,
 } from './api/shiftsApi'
+
+type RecentShift = CashierShift & { cashierName: string }
 
 const METHOD_LABELS: Record<string, string> = {
   cash: 'Cash',
@@ -52,10 +58,28 @@ export function ShiftPage() {
   const [movementReason, setMovementReason] = useState('')
   const [countedCash, setCountedCash] = useState('')
   const [varianceReason, setVarianceReason] = useState('')
-  const [closedResult, setClosedResult] = useState<{ expected: number; counted: number; variance: number; summary: ShiftSummary | null } | null>(
-    null,
-  )
+  const [closedResult, setClosedResult] = useState<{
+    id: string
+    expected: number
+    counted: number
+    variance: number
+    summary: ShiftSummary | null
+  } | null>(null)
   const [submitting, setSubmitting] = useState(false)
+
+  const [recentShifts, setRecentShifts] = useState<RecentShift[]>([])
+  const [editingShift, setEditingShift] = useState<{ id: string; countedCash: number | null } | null>(null)
+  const [editCountedCash, setEditCountedCash] = useState('')
+  const [editReason, setEditReason] = useState('')
+  const [editSubmitting, setEditSubmitting] = useState(false)
+
+  async function reloadRecentShifts() {
+    try {
+      setRecentShifts(await listRecentShifts())
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to load recent shifts')
+    }
+  }
 
   async function reload() {
     setLoading(true)
@@ -74,10 +98,32 @@ export function ShiftPage() {
         const locations = await listLocations()
         if (locations[0]) setLocationId(locations[0].id)
       }
+      await reloadRecentShifts()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to load shift')
     } finally {
       setLoading(false)
+    }
+  }
+
+  function openEditShift(s: { id: string; counted_cash: number | null }) {
+    setEditingShift({ id: s.id, countedCash: s.counted_cash })
+    setEditCountedCash(s.counted_cash != null ? String(s.counted_cash) : '')
+    setEditReason('')
+  }
+
+  async function handleCorrectShift() {
+    if (!editingShift || !editCountedCash || !editReason.trim()) return
+    setEditSubmitting(true)
+    try {
+      await correctShiftCountedCash(editingShift.id, Number(editCountedCash), editReason.trim())
+      toast.success('Counted cash corrected')
+      setEditingShift(null)
+      await reloadRecentShifts()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to correct counted cash')
+    } finally {
+      setEditSubmitting(false)
     }
   }
 
@@ -141,7 +187,7 @@ export function ShiftPage() {
     setSubmitting(true)
     try {
       const result = await closeShift(shift.id, Number(countedCash) || 0, varianceReason.trim() || undefined)
-      setClosedResult({ expected: result.expected_cash, counted: result.counted_cash, variance: result.variance, summary })
+      setClosedResult({ id: result.id, expected: result.expected_cash, counted: result.counted_cash, variance: result.variance, summary })
       toast.success('Shift closed')
       await reload()
     } catch (err) {
@@ -151,6 +197,94 @@ export function ShiftPage() {
     }
   }
 
+  const editShiftDialog = (
+    <Dialog open={!!editingShift} onOpenChange={(o) => !o && setEditingShift(null)}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Correct counted cash</DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="edit-counted-cash">Counted cash</Label>
+            <Input
+              id="edit-counted-cash"
+              type="number"
+              step="0.01"
+              min="0"
+              value={editCountedCash}
+              onChange={(e) => setEditCountedCash(e.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="edit-reason">Reason (required)</Label>
+            <Input
+              id="edit-reason"
+              placeholder="e.g. Typo -- meant 1,500 not 1,000"
+              value={editReason}
+              onChange={(e) => setEditReason(e.target.value)}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button disabled={editSubmitting || !editCountedCash || !editReason.trim()} onClick={handleCorrectShift}>
+            Save correction
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+
+  const recentShiftsCard = (
+    <Card>
+      <CardHeader>
+        <CardTitle>Recent shifts</CardTitle>
+      </CardHeader>
+      <CardContent className="overflow-x-auto">
+        {recentShifts.length === 0 ? (
+          <p className="text-muted-foreground">No closed shifts yet.</p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Cashier</TableHead>
+                <TableHead>Closed</TableHead>
+                <TableHead className="text-right">Expected</TableHead>
+                <TableHead className="text-right">Counted</TableHead>
+                <TableHead className="text-right">Variance</TableHead>
+                <TableHead />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {recentShifts.map((s) => (
+                <TableRow key={s.id}>
+                  <TableCell>{s.cashierName}</TableCell>
+                  <TableCell>{s.closed_at ? new Date(s.closed_at).toLocaleString() : '—'}</TableCell>
+                  <TableCell className="text-right">{formatMoney(s.expected_cash ?? 0)}</TableCell>
+                  <TableCell className="text-right">
+                    {formatMoney(s.counted_cash ?? 0)}
+                    {s.corrected_at && (
+                      <Badge variant="outline" className="ml-2" title={s.correction_reason ?? undefined}>
+                        Corrected
+                      </Badge>
+                    )}
+                  </TableCell>
+                  <TableCell className={`text-right ${s.variance && s.variance !== 0 ? 'text-destructive' : ''}`}>
+                    {formatMoney(s.variance ?? 0)}
+                  </TableCell>
+                  <TableCell>
+                    <Button size="sm" variant="outline" onClick={() => openEditShift({ id: s.id, counted_cash: s.counted_cash })}>
+                      Edit
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
+  )
+
   if (loading) {
     return <p className="text-muted-foreground">Loading…</p>
   }
@@ -158,7 +292,7 @@ export function ShiftPage() {
   if (closedResult) {
     const s = closedResult.summary
     return (
-      <div className="mx-auto max-w-md">
+      <div className="mx-auto flex max-w-md flex-col gap-6">
         <Card>
           <CardHeader>
             <CardTitle>Shift closed</CardTitle>
@@ -208,18 +342,26 @@ export function ShiftPage() {
                 {formatMoney(closedResult.variance)}
               </span>
             </div>
-            <Button className="mt-4" onClick={() => setClosedResult(null)}>
-              Start a new shift
-            </Button>
+            <div className="mt-4 flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => openEditShift({ id: closedResult.id, counted_cash: closedResult.counted })}
+              >
+                Fix counted cash
+              </Button>
+              <Button onClick={() => setClosedResult(null)}>Start a new shift</Button>
+            </div>
           </CardContent>
         </Card>
+        {recentShiftsCard}
+        {editShiftDialog}
       </div>
     )
   }
 
   if (!shift) {
     return (
-      <div className="mx-auto max-w-md">
+      <div className="mx-auto flex max-w-md flex-col gap-6">
         <Card>
           <CardHeader>
             <CardTitle>Open a shift</CardTitle>
@@ -260,6 +402,8 @@ export function ShiftPage() {
             </Button>
           </CardContent>
         </Card>
+        {recentShiftsCard}
+        {editShiftDialog}
       </div>
     )
   }
@@ -414,6 +558,9 @@ export function ShiftPage() {
           </CardContent>
         </Card>
       </div>
+
+      {recentShiftsCard}
+      {editShiftDialog}
     </div>
   )
 }

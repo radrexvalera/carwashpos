@@ -85,6 +85,37 @@ export async function closeShift(shiftId: string, countedCash: number, varianceR
   return data as { id: string; status: string; expected_cash: number; counted_cash: number; variance: number }
 }
 
+export async function correctShiftCountedCash(shiftId: string, countedCash: number, reason: string) {
+  const { data, error } = await supabase.rpc('correct_shift_counted_cash', {
+    p_shift_id: shiftId,
+    p_counted_cash: countedCash,
+    p_reason: reason,
+  })
+  if (error) throw error
+  return data as { id: string; expected_cash: number; counted_cash: number; variance: number }
+}
+
+// Most recent first -- covers both "my own shifts" (cashier) and "everyone's" (reviewer), since
+// cashier_shifts_select is tenant-wide, not self-scoped.
+export async function listRecentShifts(limit = 15): Promise<(CashierShift & { cashierName: string })[]> {
+  const { data: shifts, error } = await supabase
+    .from('cashier_shifts')
+    .select('*')
+    .eq('status', 'closed')
+    .order('closed_at', { ascending: false })
+    .limit(limit)
+  if (error) throw error
+
+  const employeeIds = [...new Set((shifts ?? []).map((s) => s.cashier_id))]
+  const { data: employees, error: employeesError } = employeeIds.length
+    ? await supabase.from('employees').select('id, full_name').in('id', employeeIds)
+    : { data: [], error: null }
+  if (employeesError) throw employeesError
+  const nameById = new Map((employees ?? []).map((e) => [e.id, e.full_name]))
+
+  return (shifts ?? []).map((s) => ({ ...s, cashierName: nameById.get(s.cashier_id) ?? 'Unknown' }))
+}
+
 export async function recordCashMovement(input: {
   tenantId: string
   shiftId: string

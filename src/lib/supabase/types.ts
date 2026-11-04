@@ -799,6 +799,9 @@ export interface Database {
           variance_reason: string | null
           status: 'open' | 'closed'
           is_holiday: boolean
+          corrected_by: string | null
+          corrected_at: string | null
+          correction_reason: string | null
         }
         Insert: {
           id?: string
@@ -1478,6 +1481,10 @@ export interface Database {
       }
       close_shift: {
         Args: { p_shift_id: string; p_counted_cash: number; p_variance_reason?: string }
+        Returns: Json
+      }
+      correct_shift_counted_cash: {
+        Args: { p_shift_id: string; p_counted_cash: number; p_reason: string }
         Returns: Json
       }
       get_shift_summary: {
