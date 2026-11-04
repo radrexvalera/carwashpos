@@ -143,10 +143,22 @@ export async function getPayrollEntryJobBreakdown(payrollPeriodId: string, emplo
 }
 
 export async function getCommissionReport(from: string, to: string) {
+  // Scoped by the JOB's own completed_at, not commission_ledger's created_at -- a correction
+  // (crew recomputed, a checkout discount applied, a card fee adjusted) is inserted whenever that
+  // correction happens, which can be days after the job itself. Filtering by the ledger row's own
+  // timestamp would silently exclude a correction from the very report covering the job it
+  // corrects, while still showing the original (now-wrong) entry -- same class of bug fixed in
+  // generate_payroll_period() (migration 0089), just in this report's own query instead of a
+  // database function.
+  const { data: jobsInRange, error: jobsError } = await supabase.from('jobs').select('id').gte('completed_at', from).lte('completed_at', to)
+  if (jobsError) throw jobsError
+  const jobIdsInRange = (jobsInRange ?? []).map((j) => j.id)
+  if (jobIdsInRange.length === 0) return { grandTotal: 0, employees: [] }
+
   // No status filter -- a reversal row (negative commission_amount) must be summed in, not
   // excluded, or its original mistaken entry stays fully counted with nothing left to cancel it
   // out. Status here is about payroll-claiming (earned/approved/paid), not report inclusion.
-  const { data: entries, error } = await supabase.from('commission_ledger').select('*').gte('created_at', from).lte('created_at', to)
+  const { data: entries, error } = await supabase.from('commission_ledger').select('*').in('job_id', jobIdsInRange)
   if (error) throw error
 
   const employeeIds = [...new Set((entries ?? []).map((e) => e.employee_id))]
