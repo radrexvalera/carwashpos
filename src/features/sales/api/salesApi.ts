@@ -9,6 +9,11 @@ export interface SaleListRow {
   total: number
   paymentStatus: string
   status: string
+  // true only for a job-backed sale where every one of that job's (non-cancelled) services has
+  // zero attendants assigned -- the exact condition that silently zeroes out commission at
+  // completion time (see complete_job()'s "if v_crew_count > 0" gate) until someone notices and
+  // fixes it via Edit Crew. null for a retail-only sale, which has no crew to assign at all.
+  missingCrew: boolean | null
 }
 
 // Manual joins throughout -- this codebase's hand-written types.ts has empty Relationships on
@@ -28,10 +33,32 @@ async function buildSaleRows(sales: { id: string; sale_number: string; created_a
   if (customersRes.error) throw customersRes.error
 
   const vehicleIds = [...new Set((jobsRes.data ?? []).map((j) => j.vehicle_id))]
-  const vehiclesRes = vehicleIds.length
-    ? await supabase.from('vehicles').select('id, plate_number').in('id', vehicleIds)
-    : { data: [], error: null }
+  const [vehiclesRes, jobServicesRes] = await Promise.all([
+    vehicleIds.length ? supabase.from('vehicles').select('id, plate_number').in('id', vehicleIds) : Promise.resolve({ data: [], error: null }),
+    jobIds.length
+      ? supabase.from('job_services').select('id, job_id').in('job_id', jobIds).neq('status', 'cancelled')
+      : Promise.resolve({ data: [], error: null }),
+  ])
   if (vehiclesRes.error) throw vehiclesRes.error
+  if (jobServicesRes.error) throw jobServicesRes.error
+
+  const jobServiceIds = (jobServicesRes.data ?? []).map((js) => js.id)
+  const attendantsRes = jobServiceIds.length
+    ? await supabase.from('job_service_attendants').select('job_service_id').in('job_service_id', jobServiceIds)
+    : { data: [], error: null }
+  if (attendantsRes.error) throw attendantsRes.error
+
+  const jobServiceIdsWithCrew = new Set((attendantsRes.data ?? []).map((a) => a.job_service_id))
+  // A job is missing crew only if it has at least one service line AND none of them have anyone
+  // assigned -- a job with zero (non-cancelled) service lines isn't "missing crew", it's just empty.
+  const jobServiceCountByJobId = new Map<string, number>()
+  const jobServiceWithCrewCountByJobId = new Map<string, number>()
+  for (const js of jobServicesRes.data ?? []) {
+    jobServiceCountByJobId.set(js.job_id, (jobServiceCountByJobId.get(js.job_id) ?? 0) + 1)
+    if (jobServiceIdsWithCrew.has(js.id)) {
+      jobServiceWithCrewCountByJobId.set(js.job_id, (jobServiceWithCrewCountByJobId.get(js.job_id) ?? 0) + 1)
+    }
+  }
 
   const plateByVehicleId = new Map((vehiclesRes.data ?? []).map((v) => [v.id, v.plate_number]))
   const vehicleIdByJobId = new Map((jobsRes.data ?? []).map((j) => [j.id, j.vehicle_id]))
@@ -48,6 +75,9 @@ async function buildSaleRows(sales: { id: string; sale_number: string; created_a
     total: s.total - s.card_processing_fee,
     paymentStatus: s.payment_status,
     status: s.status,
+    missingCrew: s.job_id
+      ? (jobServiceCountByJobId.get(s.job_id) ?? 0) > 0 && (jobServiceWithCrewCountByJobId.get(s.job_id) ?? 0) === 0
+      : null,
   }))
 }
 

@@ -195,9 +195,16 @@ export function TransactionsPage() {
                     <TableCell>{s.customerName ?? '—'}</TableCell>
                     <TableCell>{formatMoney(s.total)}</TableCell>
                     <TableCell>
-                      <Badge variant={s.status === 'completed' ? 'outline' : 'destructive'}>
-                        {s.status === 'completed' ? s.paymentStatus : s.status}
-                      </Badge>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Badge variant={s.status === 'completed' ? 'outline' : 'destructive'}>
+                          {s.status === 'completed' ? s.paymentStatus : s.status}
+                        </Badge>
+                        {s.status === 'completed' && s.missingCrew && (
+                          <Badge variant="destructive" title="No crew assigned on this job yet -- commission hasn't been earned by anyone">
+                            No crew
+                          </Badge>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <Button size="sm" variant="outline" onClick={() => openSale(s.id)}>
