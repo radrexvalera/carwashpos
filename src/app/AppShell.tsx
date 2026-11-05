@@ -287,6 +287,7 @@ function AppShellInner() {
   const [locationName, setLocationName] = useState('')
   const [logoUrl, setLogoUrl] = useState<string | null>(null)
   const [trialExpired, setTrialExpired] = useState(false)
+  const [trialDaysLeft, setTrialDaysLeft] = useState<number | null>(null)
   const autoTourChecked = useRef(false)
 
   useEffect(() => {
@@ -297,6 +298,11 @@ function AppShellInner() {
         setLocationName(locations[0]?.name ?? '')
         setLogoUrl(settings.logo_url)
         setTrialExpired(trial.expired)
+        setTrialDaysLeft(
+          trial.trialEndsAt && !trial.expired
+            ? Math.ceil((new Date(trial.trialEndsAt).getTime() - Date.now()) / 86_400_000)
+            : null,
+        )
         // Auto-launch only once, the very first time a new tenant lands on the dashboard with no
         // prior onboarding record -- not on every page, so it never interrupts someone already
         // mid-task elsewhere in the app.
@@ -359,6 +365,15 @@ function AppShellInner() {
       {trialExpired && (
         <div className="flex items-center justify-center gap-2 border-b bg-destructive/10 px-3 py-2 text-center text-sm text-destructive print:hidden">
           <span>Your free trial has ended — your account is now read-only. Contact us to keep using {businessName || 'the app'}.</span>
+        </div>
+      )}
+
+      {!trialExpired && trialDaysLeft !== null && trialDaysLeft <= 7 && (
+        <div className="flex items-center justify-center gap-2 border-b bg-amber-500/10 px-3 py-2 text-center text-sm text-amber-700 dark:text-amber-400 print:hidden">
+          <span>
+            Your free trial ends in {trialDaysLeft} day{trialDaysLeft === 1 ? '' : 's'}. Contact us to keep using{' '}
+            {businessName || 'the app'} without interruption.
+          </span>
         </div>
       )}
 
