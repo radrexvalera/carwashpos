@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { pdf } from '@react-pdf/renderer'
 import { Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -567,7 +567,7 @@ export function PayrollPage() {
             {entries.map((entry) => (
               <Card key={entry.id}>
                 <CardHeader className="flex flex-row items-center justify-between">
-                  <CardTitle className="text-base">{entry.employeeName}</CardTitle>
+                  <CardTitle className="text-base text-red-600 dark:text-red-500">{entry.employeeName}</CardTitle>
                   <div className="flex gap-2">
                     <Button size="sm" variant="outline" onClick={() => setPrintingEntryId(entry.id)}>
                       Print payslip (receipt)
@@ -654,20 +654,30 @@ export function PayrollPage() {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {(jobBreakdownByEntry[entry.id] ?? []).map((j, i) => (
-                            <TableRow key={`${j.jobId}-${i}`}>
-                              <TableCell>{j.jobNumber}</TableCell>
-                              <TableCell>{j.plateNumber ?? '—'}</TableCell>
-                              <TableCell>{j.vehicleSizeName ?? '—'}</TableCell>
-                              <TableCell>{new Date(j.date).toLocaleDateString()}</TableCell>
-                              <TableCell>{j.serviceName ?? 'Whole job'}</TableCell>
-                              <TableCell>{j.jobServiceNames || '—'}</TableCell>
-                              <TableCell>{j.rate}%</TableCell>
-                              <TableCell className="text-right">{formatMoney(j.grossAmount)}</TableCell>
-                              <TableCell className="text-right">{j.discountAmount > 0 ? formatMoney(j.discountAmount) : '—'}</TableCell>
-                              <TableCell className="text-right">{formatMoney(j.commissionAmount)}</TableCell>
-                            </TableRow>
-                          ))}
+                          {(jobBreakdownByEntry[entry.id] ?? []).map((j, i, rows) => {
+                            const newDateGroup = i > 0 && new Date(j.date).toDateString() !== new Date(rows[i - 1].date).toDateString()
+                            return (
+                              <Fragment key={`${j.jobId}-${i}`}>
+                                {newDateGroup && (
+                                  <TableRow className="hover:bg-transparent">
+                                    <TableCell colSpan={10} className="h-2 p-0" />
+                                  </TableRow>
+                                )}
+                                <TableRow>
+                                  <TableCell>{j.jobNumber}</TableCell>
+                                  <TableCell>{j.plateNumber ?? '—'}</TableCell>
+                                  <TableCell>{j.vehicleSizeName ?? '—'}</TableCell>
+                                  <TableCell>{new Date(j.date).toLocaleDateString()}</TableCell>
+                                  <TableCell>{j.serviceName ?? 'Whole job'}</TableCell>
+                                  <TableCell>{j.jobServiceNames || '—'}</TableCell>
+                                  <TableCell>{j.rate}%</TableCell>
+                                  <TableCell className="text-right">{formatMoney(j.grossAmount)}</TableCell>
+                                  <TableCell className="text-right">{j.discountAmount > 0 ? formatMoney(j.discountAmount) : '—'}</TableCell>
+                                  <TableCell className="text-right">{formatMoney(j.commissionAmount)}</TableCell>
+                                </TableRow>
+                              </Fragment>
+                            )
+                          })}
                         </TableBody>
                       </Table>
                     )}
