@@ -81,6 +81,12 @@ export function SalesReportPage() {
   // recorded as a real expense (category: Commission Payouts), already counted in expenses.total.
   const net = sales && expenses ? sales.grossSales - expenses.total : 0
 
+  // Same loose name match ExpensesPage's own Repaint tab uses for its expense category, so both
+  // pages agree on what counts as a "repaint expense" -- there's no separate RPC for this, since
+  // expenses.byCategory (already loaded for the All Sales tab) already has everything needed.
+  const repaintExpenseTotal = expenses?.byCategory.filter((c) => /repaint/i.test(c.name)).reduce((sum, c) => sum + c.total, 0) ?? 0
+  const repaintNet = (repaint && repaint.categoryFound ? repaint.totalRevenue : 0) - repaintExpenseTotal
+
   function csvCell(value: string | number) {
     const str = String(value)
     return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str
@@ -138,7 +144,9 @@ export function SalesReportPage() {
       [],
       ['Summary'],
       ['Metric', 'Value'],
-      ['Total revenue', repaint.totalRevenue.toFixed(2)],
+      ['Gross', repaint.totalRevenue.toFixed(2)],
+      ['Expenses', repaintExpenseTotal.toFixed(2)],
+      ['Net', repaintNet.toFixed(2)],
       ['Discounts given', repaint.discountTotal.toFixed(2)],
       ['Line items', String(repaint.lineCount)],
       ['Jobs', String(repaint.jobCount)],
@@ -356,12 +364,24 @@ export function SalesReportPage() {
               <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
                 <Card>
                   <CardContent className="pt-6">
-                    <div className="text-sm text-muted-foreground">Total revenue</div>
+                    <div className="text-sm text-muted-foreground">Gross</div>
                     <div className="text-xl font-semibold">{formatMoney(repaint.totalRevenue)}</div>
                     <div className="text-xs text-muted-foreground">
                       {repaint.lineCount} line{repaint.lineCount === 1 ? '' : 's'} · {repaint.jobCount} job
                       {repaint.jobCount === 1 ? '' : 's'}
                     </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="text-sm text-muted-foreground">Expenses</div>
+                    <div className="text-xl font-semibold">{formatMoney(repaintExpenseTotal)}</div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="text-sm text-muted-foreground">Net</div>
+                    <div className="text-xl font-semibold">{formatMoney(repaintNet)}</div>
                   </CardContent>
                 </Card>
                 <Card>
