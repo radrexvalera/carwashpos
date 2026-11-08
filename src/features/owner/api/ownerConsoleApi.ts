@@ -6,7 +6,11 @@ export interface OwnerTenantRow {
   createdAt: string
   trialEndsAt: string | null
   adminEmail: string | null
+  features: Record<string, boolean>
 }
+
+// Keep in sync with KNOWN_FEATURES in supabase/functions/owner-console/index.ts.
+export const KNOWN_FEATURES: { key: string; label: string }[] = [{ key: 'repaint', label: 'Repaint tracking' }]
 
 // supabase.functions.invoke() only gives a generic "non-2xx" message for a FunctionsHttpError --
 // the real reason is in the response body, which the client wraps but doesn't surface
@@ -37,6 +41,13 @@ export async function listOwnerTenants(): Promise<OwnerTenantRow[]> {
 export async function updateTenantTrial(tenantId: string, trialEndsAt: string | null): Promise<void> {
   const { error } = await supabase.functions.invoke('owner-console', {
     body: { action: 'update_trial', tenantId, trialEndsAt },
+  })
+  if (error) await unwrapFunctionError(error)
+}
+
+export async function updateTenantFeature(tenantId: string, feature: string, enabled: boolean): Promise<void> {
+  const { error } = await supabase.functions.invoke('owner-console', {
+    body: { action: 'update_feature', tenantId, feature, enabled },
   })
   if (error) await unwrapFunctionError(error)
 }

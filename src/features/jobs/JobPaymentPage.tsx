@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { formatMoney } from '@/lib/money'
+import { hasFeature } from '@/lib/features'
 import { useTenant } from '@/app/TenantProvider'
 import { db } from '@/lib/db/dexie'
 import { safeGetItem, safeSetItem } from '@/lib/safeStorage'
@@ -120,7 +121,7 @@ export function JobPaymentPage() {
         setVehicleModel(jobData.vehicle.model)
         setCrewNames(jobData.crewNames)
         setCrew(jobData.crew)
-        setIsRepaintJob(jobData.isRepaintJob)
+        setIsRepaintJob(jobData.isRepaintJob && hasFeature(settingsData.features, 'repaint'))
         setJobServices(jobData.jobServices)
         setRetailItems(jobData.retailItems)
         setLocationName(jobData.locationName)
@@ -136,19 +137,19 @@ export function JobPaymentPage() {
         // reject this at sync time if something's genuinely wrong (e.g. the cached shift was
         // closed in the meantime), surfaced through the normal failed-mutation recovery UI.
         async function applyOfflineJobData(jobData: Awaited<ReturnType<typeof getJobForPaymentOffline>>) {
+          const cachedSettings = await db.settings.get(profile!.tenantId)
           setJobNumber(jobData.job.job_number)
           setPlate(jobData.vehicle.plate_number)
           setVehicleModel(jobData.vehicle.model)
           setCrewNames(jobData.crewNames)
           setCrew(jobData.crew)
-          setIsRepaintJob(jobData.isRepaintJob)
+          setIsRepaintJob(jobData.isRepaintJob && hasFeature(cachedSettings?.features, 'repaint'))
           setJobServices(jobData.jobServices)
           setRetailItems([])
           setLocationName(jobData.locationName)
           const cachedShiftId = shiftCacheKey ? safeGetItem(shiftCacheKey) : null
           setShiftId(cachedShiftId)
           setCustomer(jobData.customer)
-          const cachedSettings = await db.settings.get(profile!.tenantId)
           setSettings(cachedSettings ?? null)
           setOfflineMode(true)
         }

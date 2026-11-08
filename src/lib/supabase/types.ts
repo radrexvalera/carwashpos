@@ -161,6 +161,9 @@ export interface Database {
           card_processing_fee_rate: number
           onboarding_completed_at: string | null
           logo_url: string | null
+          // Owner-Console-controlled, tenant-scoped on/off switches (e.g. {"repaint": true}) --
+          // see 0095_tenant_feature_flags.sql. Never written via the normal settings update path.
+          features: Json
           updated_at: string
         }
         Insert: {
@@ -183,6 +186,7 @@ export interface Database {
           card_processing_fee_rate?: number
           onboarding_completed_at?: string | null
           logo_url?: string | null
+          features?: Json
           updated_at?: string
         }
         Update: Partial<Database['public']['Tables']['settings']['Insert']>

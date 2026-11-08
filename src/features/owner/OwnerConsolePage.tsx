@@ -6,8 +6,9 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { listOwnerTenants, updateTenantTrial, type OwnerTenantRow } from './api/ownerConsoleApi'
+import { KNOWN_FEATURES, listOwnerTenants, updateTenantFeature, updateTenantTrial, type OwnerTenantRow } from './api/ownerConsoleApi'
 
 function trialStatus(trialEndsAt: string | null): { label: string; variant: 'outline' | 'secondary' | 'destructive' } {
   if (!trialEndsAt) return { label: 'Active (no trial)', variant: 'outline' }
@@ -67,6 +68,21 @@ export function OwnerConsolePage() {
     handleUpdate(tenant.id, null, 'Trial cleared — account is now permanently active')
   }
 
+  async function handleToggleFeature(tenant: OwnerTenantRow, feature: string, enabled: boolean) {
+    setBusyId(tenant.id)
+    try {
+      await updateTenantFeature(tenant.id, feature, enabled)
+      setTenants((prev) =>
+        prev.map((t) => (t.id === tenant.id ? { ...t, features: { ...t.features, [feature]: enabled } } : t)),
+      )
+      toast.success(`${enabled ? 'Enabled' : 'Disabled'} ${feature} for ${tenant.name}`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update feature')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
   if (authLoading) return <div className="flex h-screen items-center justify-center text-muted-foreground">Loading…</div>
   if (!session) return <Navigate to="/login" replace />
 
@@ -97,6 +113,7 @@ export function OwnerConsolePage() {
                   <TableHead>Created</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Trial ends</TableHead>
+                  <TableHead>Features</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -114,6 +131,20 @@ export function OwnerConsolePage() {
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {t.trialEndsAt ? new Date(t.trialEndsAt).toLocaleDateString() : '—'}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-col gap-1.5">
+                          {KNOWN_FEATURES.map((f) => (
+                            <label key={f.key} className="flex items-center gap-2 text-sm">
+                              <Switch
+                                checked={!!t.features[f.key]}
+                                disabled={busy}
+                                onCheckedChange={(checked) => handleToggleFeature(t, f.key, checked)}
+                              />
+                              {f.label}
+                            </label>
+                          ))}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap items-center gap-1.5">
@@ -141,7 +172,7 @@ export function OwnerConsolePage() {
                 })}
                 {tenants.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground">
+                    <TableCell colSpan={7} className="text-center text-muted-foreground">
                       No tenants yet.
                     </TableCell>
                   </TableRow>

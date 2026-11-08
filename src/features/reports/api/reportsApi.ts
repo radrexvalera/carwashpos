@@ -1,6 +1,36 @@
 import { supabase } from '@/lib/supabase/client'
 import { localDateString } from '@/lib/date'
 
+// Resolves whichever service_categories row is named "Repaint" for this tenant, and every service
+// under it -- shared by getSalesReport() (which excludes these lines) and getRepaintSalesReport()
+// (which totals only these lines). Returns an empty set for a tenant with no such category, which
+// is the common case: that makes every repaint-aware computation below a no-op for them, so this
+// never needs its own feature flag to stay invisible.
+async function getRepaintServiceIds(): Promise<Set<string>> {
+  const { data: category, error: catError } = await supabase
+    .from('service_categories')
+    .select('id')
+    .ilike('name', 'Repaint')
+    .limit(1)
+    .maybeSingle()
+  if (catError) throw catError
+  if (!category) return new Set()
+
+  const { data: categoryServices, error: servicesError } = await supabase
+    .from('services')
+    .select('id')
+    .eq('category_id', category.id)
+  if (servicesError) throw servicesError
+  return new Set((categoryServices ?? []).map((s) => s.id))
+}
+
+// Test123's "All sales" feeds a report they submit to their franchise owner, and repaint work
+// isn't part of that franchise deal -- so repaint revenue must be fully excluded here, not just
+// broken out separately (that's what the Repaint tab is for). A sale that mixes a repaint line
+// with an ordinary one (rare, but happens) has its sale-level fields -- manual discount, card fee,
+// promotion/loyalty/membership discount -- apportioned between repaint and non-repaint by each
+// side's share of that sale's line revenue, since those fields don't carry their own per-line
+// split. Per-line discounts need no apportioning; sale_items.discount_amount is already exact per line.
 export async function getSalesReport(fromIso: string, toIso: string) {
   const { data: sales, error } = await supabase.from('sales').select('*').gte('created_at', fromIso).lte('created_at', toIso)
   if (error) throw error
@@ -9,46 +39,95 @@ export async function getSalesReport(fromIso: string, toIso: string) {
   const voidedCount = (sales ?? []).filter((s) => s.status === 'voided').length
   const saleIds = completed.map((s) => s.id)
 
-  const [paymentsRes, itemsRes] = await Promise.all([
+  const [paymentsRes, itemsRes, repaintServiceIds] = await Promise.all([
     saleIds.length
       ? supabase.from('payments').select('*').in('sale_id', saleIds)
       : Promise.resolve({ data: [], error: null }),
     saleIds.length
       ? supabase.from('sale_items').select('*').in('sale_id', saleIds)
       : Promise.resolve({ data: [], error: null }),
+    getRepaintServiceIds(),
   ])
   if (paymentsRes.error) throw paymentsRes.error
   if (itemsRes.error) throw itemsRes.error
 
-  const byMethod = new Map<string, number>()
-  for (const p of paymentsRes.data ?? []) {
-    byMethod.set(p.method, (byMethod.get(p.method) ?? 0) + p.amount)
+  const items = itemsRes.data ?? []
+  const jobServiceIds = items.filter((i) => i.line_type === 'job_service' && i.job_service_id).map((i) => i.job_service_id as string)
+  const { data: jobServices, error: jsError } = jobServiceIds.length
+    ? await supabase.from('job_services').select('id, service_id').in('id', jobServiceIds)
+    : { data: [], error: null }
+  if (jsError) throw jsError
+  const serviceIdByJobServiceId = new Map((jobServices ?? []).map((js) => [js.id, js.service_id]))
+
+  function isRepaintItem(item: (typeof items)[number]) {
+    if (item.line_type !== 'job_service' || !item.job_service_id) return false
+    const serviceId = serviceIdByJobServiceId.get(item.job_service_id)
+    return !!serviceId && repaintServiceIds.has(serviceId)
+  }
+
+  const itemsBySale = new Map<string, typeof items>()
+  for (const item of items) {
+    const bucket = itemsBySale.get(item.sale_id) ?? []
+    bucket.push(item)
+    itemsBySale.set(item.sale_id, bucket)
   }
 
   const byService = new Map<string, { count: number; total: number }>()
   let serviceRevenue = 0
   let productRevenue = 0
-  for (const item of itemsRes.data ?? []) {
-    if (item.line_type === 'job_service') {
-      serviceRevenue += item.line_total
-      const bucket = byService.get(item.description) ?? { count: 0, total: 0 }
-      bucket.count += 1
-      bucket.total += item.line_total
-      byService.set(item.description, bucket)
-    } else {
-      productRevenue += item.line_total
+  let grossSales = 0
+  let discountTotal = 0
+  let promotionDiscountTotal = 0
+  let cardProcessingFeeTotal = 0
+  // sale id -> the fraction of that sale's line revenue that is NOT repaint, used again below to
+  // apportion each of its payments the same way when building the by-method breakdown.
+  const nonRepaintFractionBySale = new Map<string, number>()
+
+  for (const sale of completed) {
+    const saleItems = itemsBySale.get(sale.id) ?? []
+    const saleItemsTotal = saleItems.reduce((sum, i) => sum + i.line_total, 0)
+    const nonRepaintItems = saleItems.filter((i) => !isRepaintItem(i))
+    const nonRepaintItemsTotal = nonRepaintItems.reduce((sum, i) => sum + i.line_total, 0)
+    const fraction = saleItemsTotal > 0 ? nonRepaintItemsTotal / saleItemsTotal : 1
+    nonRepaintFractionBySale.set(sale.id, fraction)
+
+    for (const item of nonRepaintItems) {
+      if (item.line_type === 'job_service') {
+        serviceRevenue += item.line_total
+        const bucket = byService.get(item.description) ?? { count: 0, total: 0 }
+        bucket.count += 1
+        bucket.total += item.line_total
+        byService.set(item.description, bucket)
+      } else {
+        productRevenue += item.line_total
+      }
     }
+
+    const nonRepaintCardFee = sale.card_processing_fee * fraction
+    const nonRepaintSaleLevelDiscount =
+      (sale.manual_discount_amount + sale.promotion_discount_amount + sale.loyalty_discount_amount + sale.membership_discount_amount) * fraction
+
+    // Net of the card processing fee -- the fee is a real cost the business absorbs, so it reduces
+    // what counts as sales here too, not just Net.
+    grossSales += nonRepaintItemsTotal - nonRepaintSaleLevelDiscount - nonRepaintCardFee
+    discountTotal += nonRepaintItems.reduce((sum, i) => sum + i.discount_amount, 0) + sale.manual_discount_amount * fraction
+    promotionDiscountTotal += sale.promotion_discount_amount * fraction
+    cardProcessingFeeTotal += nonRepaintCardFee
+  }
+
+  const byMethod = new Map<string, number>()
+  for (const p of paymentsRes.data ?? []) {
+    const fraction = nonRepaintFractionBySale.get(p.sale_id) ?? 1
+    byMethod.set(p.method, (byMethod.get(p.method) ?? 0) + p.amount * fraction)
   }
 
   return {
     saleCount: completed.length,
     voidedCount,
-    // Net of the card processing fee -- the fee is a real cost the business absorbs, so it reduces
-    // what counts as sales here too, not just Net.
-    grossSales: completed.reduce((sum, s) => sum + s.total - s.card_processing_fee, 0),
-    discountTotal: completed.reduce((sum, s) => sum + s.discount_total + s.manual_discount_amount, 0),
-    promotionDiscountTotal: completed.reduce((sum, s) => sum + s.promotion_discount_amount, 0),
-    cardProcessingFeeTotal: completed.reduce((sum, s) => sum + s.card_processing_fee, 0),
+    grossSales,
+    discountTotal,
+    promotionDiscountTotal,
+    cardProcessingFeeTotal,
     serviceRevenue,
     productRevenue,
     byMethod: [...byMethod.entries()].map(([method, total]) => ({ method, total })).sort((a, b) => b.total - a.total),
@@ -60,9 +139,10 @@ export async function getSalesReport(fromIso: string, toIso: string) {
 
 // Scoped to whichever service_categories row is named "Repaint" for this tenant -- repaint is a
 // non-carwash service line sold alongside regular car wash jobs, so owners want its own revenue
-// total separate from the main Sales Report instead of buried inside "Services". Payment-method
-// and discount-pool breakdowns don't carry over here: those are sale-level (a repaint line can
-// share a sale/payment with ordinary wash services), so this report only totals what's directly
+// total separate from the main Sales Report instead of buried inside "Services" (and, per
+// getSalesReport() above, now fully excluded from "All sales" too). Payment-method and
+// discount-pool breakdowns don't carry over here: those are sale-level (a repaint line can share a
+// sale/payment with ordinary wash services), so this report only totals what's directly
 // attributable to repaint line items themselves.
 export async function getRepaintSalesReport(fromIso: string, toIso: string) {
   const { data: category, error: catError } = await supabase

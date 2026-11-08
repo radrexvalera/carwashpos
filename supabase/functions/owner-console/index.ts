@@ -63,6 +63,10 @@ Deno.serve(async (req) => {
       .order('created_at', { ascending: false })
     if (tenantsErr) return json({ error: tenantsErr.message }, 500)
 
+    const { data: settingsRows, error: settingsErr } = await adminClient.from('settings').select('tenant_id, features')
+    if (settingsErr) return json({ error: settingsErr.message }, 500)
+    const featuresByTenant = new Map((settingsRows ?? []).map((s) => [s.tenant_id, s.features ?? {}]))
+
     const { data: profiles, error: profilesErr } = await adminClient
       .from('user_profiles')
       .select('id, tenant_id, created_at')
@@ -93,6 +97,7 @@ Deno.serve(async (req) => {
       createdAt: t.created_at,
       trialEndsAt: t.trial_ends_at,
       adminEmail: adminEmailByTenant.get(t.id) ?? null,
+      features: featuresByTenant.get(t.id) ?? {},
     }))
 
     return json({ tenants: rows })
@@ -116,6 +121,32 @@ Deno.serve(async (req) => {
     if (updateErr) return json({ error: updateErr.message }, 500)
 
     return json({ id: tenantId, trialEndsAt })
+  }
+
+  // Business-specific features built for one customer (repaint tracking being the first) that
+  // most tenants don't want cluttering their UI -- see 0095_tenant_feature_flags.sql. A fixed
+  // allowlist, not an arbitrary key, so a typo here can't silently create a dead flag nothing
+  // reads.
+  if (action === 'update_feature') {
+    const KNOWN_FEATURES = ['repaint']
+    const tenantId = String(body.tenantId ?? '')
+    const feature = String(body.feature ?? '')
+    const enabled = Boolean(body.enabled)
+    if (!tenantId) return json({ error: 'tenantId is required' }, 400)
+    if (!KNOWN_FEATURES.includes(feature)) return json({ error: `Unknown feature "${feature}"` }, 400)
+
+    const { data: existing, error: readErr } = await adminClient
+      .from('settings')
+      .select('features')
+      .eq('tenant_id', tenantId)
+      .single()
+    if (readErr) return json({ error: readErr.message }, 500)
+
+    const nextFeatures = { ...((existing?.features as Record<string, boolean>) ?? {}), [feature]: enabled }
+    const { error: updateErr } = await adminClient.from('settings').update({ features: nextFeatures }).eq('tenant_id', tenantId)
+    if (updateErr) return json({ error: updateErr.message }, 500)
+
+    return json({ id: tenantId, features: nextFeatures })
   }
 
   return json({ error: `Unknown action "${action}"` }, 400)

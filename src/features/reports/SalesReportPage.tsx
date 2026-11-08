@@ -10,6 +10,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DateRangePresets } from '@/components/DateRangePresets'
 import { formatMoney } from '@/lib/money'
 import { localDateString } from '@/lib/date'
+import { hasFeature } from '@/lib/features'
+import { useTenant } from '@/app/TenantProvider'
+import { getSettings } from '@/features/settings/api/settingsApi'
 import { getCashAdvancesSummary, getExpensesByCategory, getRepaintSalesReport, getSalesReport } from './api/reportsApi'
 
 const METHOD_LABELS: Record<string, string> = {
@@ -27,12 +30,14 @@ const METHOD_LABELS: Record<string, string> = {
 }
 
 export function SalesReportPage() {
+  const { profile } = useTenant()
   const [from, setFrom] = useState(localDateString())
   const [to, setTo] = useState(localDateString())
   const [sales, setSales] = useState<Awaited<ReturnType<typeof getSalesReport>> | null>(null)
   const [expenses, setExpenses] = useState<Awaited<ReturnType<typeof getExpensesByCategory>> | null>(null)
   const [cashAdvances, setCashAdvances] = useState<Awaited<ReturnType<typeof getCashAdvancesSummary>> | null>(null)
   const [repaint, setRepaint] = useState<Awaited<ReturnType<typeof getRepaintSalesReport>> | null>(null)
+  const [repaintEnabled, setRepaintEnabled] = useState(false)
   const [loading, setLoading] = useState(true)
 
   async function load(f: string = from, t: string = to) {
@@ -40,11 +45,14 @@ export function SalesReportPage() {
     try {
       const fromIso = new Date(`${f}T00:00:00`).toISOString()
       const toIso = new Date(`${t}T23:59:59`).toISOString()
+      const settings = profile ? await getSettings(profile.tenantId) : null
+      const repaintOn = hasFeature(settings?.features, 'repaint')
+      setRepaintEnabled(repaintOn)
       const [salesData, expensesData, cashAdvancesData, repaintData] = await Promise.all([
         getSalesReport(fromIso, toIso),
         getExpensesByCategory(f, t),
         getCashAdvancesSummary(f, t),
-        getRepaintSalesReport(fromIso, toIso),
+        repaintOn ? getRepaintSalesReport(fromIso, toIso) : Promise.resolve(null),
       ])
       setSales(salesData)
       setExpenses(expensesData)
@@ -60,7 +68,7 @@ export function SalesReportPage() {
   useEffect(() => {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [profile?.tenantId])
 
   function handlePreset(range: { from: string; to: string }) {
     setFrom(range.from)
@@ -188,7 +196,7 @@ export function SalesReportPage() {
       <Tabs defaultValue="all">
         <TabsList>
           <TabsTrigger value="all">All sales</TabsTrigger>
-          <TabsTrigger value="repaint">Repaint</TabsTrigger>
+          {repaintEnabled && <TabsTrigger value="repaint">Repaint</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="all" className="flex flex-col gap-4">
@@ -331,6 +339,7 @@ export function SalesReportPage() {
           ) : null}
         </TabsContent>
 
+        {repaintEnabled && (
         <TabsContent value="repaint" className="flex flex-col gap-4">
           <Button variant="outline" className="self-end" onClick={exportRepaintCsv} disabled={loading || !repaint?.categoryFound}>
             Export CSV
@@ -420,6 +429,7 @@ export function SalesReportPage() {
             </>
           )}
         </TabsContent>
+        )}
       </Tabs>
     </div>
   )

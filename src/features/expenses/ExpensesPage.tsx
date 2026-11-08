@@ -11,6 +11,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatMoney } from '@/lib/money'
 import { localDateString } from '@/lib/date'
+import { hasFeature } from '@/lib/features'
+import { useTenant } from '@/app/TenantProvider'
+import { getSettings } from '@/features/settings/api/settingsApi'
 import {
   listExpenseCategories,
   listExpenses,
@@ -41,8 +44,10 @@ function startOfMonth() {
 }
 
 export function ExpensesPage() {
+  const { profile } = useTenant()
   const [categories, setCategories] = useState<ExpenseCategory[]>([])
   const [expenses, setExpenses] = useState<Expense[]>([])
+  const [repaintEnabled, setRepaintEnabled] = useState(false)
   const [loading, setLoading] = useState(true)
 
   const [from, setFrom] = useState(startOfMonth())
@@ -65,11 +70,16 @@ export function ExpensesPage() {
   async function reload() {
     setLoading(true)
     try {
-      const [categoriesData, expensesData] = await Promise.all([listExpenseCategories(), listExpenses(from, to)])
+      const [categoriesData, expensesData, settings] = await Promise.all([
+        listExpenseCategories(),
+        listExpenses(from, to),
+        profile ? getSettings(profile.tenantId) : Promise.resolve(null),
+      ])
       const active = categoriesData.filter((c) => c.is_active)
       setCategories(active)
       if (!categoryId && active[0]) setCategoryId(active[0].id)
       setExpenses(expensesData)
+      setRepaintEnabled(hasFeature(settings?.features, 'repaint'))
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to load expenses')
     } finally {
@@ -80,7 +90,7 @@ export function ExpensesPage() {
   useEffect(() => {
     reload()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [from, to])
+  }, [from, to, profile?.tenantId])
 
   const categoryName = (id: string) => categories.find((c) => c.id === id)?.name ?? 'Uncategorized'
   const total = expenses.filter((e) => !e.is_voided).reduce((sum, e) => sum + e.amount, 0)
@@ -288,7 +298,7 @@ export function ExpensesPage() {
       <Tabs defaultValue="all">
         <TabsList>
           <TabsTrigger value="all">All expenses</TabsTrigger>
-          <TabsTrigger value="repaint">Repaint</TabsTrigger>
+          {repaintEnabled && <TabsTrigger value="repaint">Repaint</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="all" className="flex flex-col gap-3">
@@ -298,21 +308,23 @@ export function ExpensesPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="repaint" className="flex flex-col gap-3">
-          <div className="text-right text-lg font-semibold">Total: {formatMoney(repaintTotal)}</div>
-          <Card>
-            <CardContent className="pt-6">
-              {repaintCategoryIds.size === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No "Repaint" expense category is set up for this tenant yet. Add one on the Expense Categories page to use this
-                  tab.
-                </p>
-              ) : (
-                renderTable(repaintExpenses, 'No repaint expenses in this period.')
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+        {repaintEnabled && (
+          <TabsContent value="repaint" className="flex flex-col gap-3">
+            <div className="text-right text-lg font-semibold">Total: {formatMoney(repaintTotal)}</div>
+            <Card>
+              <CardContent className="pt-6">
+                {repaintCategoryIds.size === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No "Repaint" expense category is set up for this tenant yet. Add one on the Expense Categories page to use this
+                    tab.
+                  </p>
+                ) : (
+                  renderTable(repaintExpenses, 'No repaint expenses in this period.')
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   )
