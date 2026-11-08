@@ -308,6 +308,9 @@ export async function createPurchaseOrder(input: {
   orderDate: string
   deliveryCharge: number
   paymentMethod: 'cash' | 'gcash' | 'maya' | 'bank_transfer' | 'card' | 'maribank' | 'gotyme' | 'rcbc' | 'bpi' | 'unionbank' | 'qrph'
+  // Which expense category the PO's auto-recorded expense posts under -- omit/null to keep the
+  // default "found-or-created Inventory Purchases" behavior.
+  expenseCategoryId?: string | null
   items: { itemId: string; quantity: number; unitCost: number; discountAmount: number }[]
 }) {
   const payload = {
@@ -316,6 +319,7 @@ export async function createPurchaseOrder(input: {
     order_date: input.orderDate,
     delivery_charge: input.deliveryCharge,
     payment_method: input.paymentMethod,
+    expense_category_id: input.expenseCategoryId ?? null,
     items: input.items.map((i) => ({
       item_id: i.itemId,
       quantity: i.quantity,

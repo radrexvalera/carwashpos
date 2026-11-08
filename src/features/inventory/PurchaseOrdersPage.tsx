@@ -9,6 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { formatMoney } from '@/lib/money'
 import { localDateString } from '@/lib/date'
+import { listExpenseCategories } from '@/features/expenses/api/expensesApi'
+import type { ExpenseCategory } from '@/features/expenses/api/expensesApi'
 import { createPurchaseOrder, listInventoryUnits, listPurchaseOrders, listStockLevels, listSuppliers } from './api/inventoryApi'
 import type { InventoryStockLevel, Supplier } from './api/inventoryApi'
 
@@ -40,12 +42,14 @@ export function PurchaseOrdersPage() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [items, setItems] = useState<InventoryStockLevel[]>([])
   const [orders, setOrders] = useState<Awaited<ReturnType<typeof listPurchaseOrders>>>([])
+  const [expenseCategories, setExpenseCategories] = useState<ExpenseCategory[]>([])
   const [loading, setLoading] = useState(true)
 
   const [supplierId, setSupplierId] = useState('')
   const [referenceNumber, setReferenceNumber] = useState('')
   const [deliveryCharge, setDeliveryCharge] = useState('0')
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash')
+  const [expenseCategoryId, setExpenseCategoryId] = useState('')
   const [lines, setLines] = useState<DraftLine[]>([])
   const [pickedItemId, setPickedItemId] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -53,11 +57,22 @@ export function PurchaseOrdersPage() {
   async function reload() {
     setLoading(true)
     try {
-      const [suppliersData, itemsData, ordersData] = await Promise.all([listSuppliers(), listStockLevels(), listPurchaseOrders()])
+      const [suppliersData, itemsData, ordersData, expenseCategoriesData] = await Promise.all([
+        listSuppliers(),
+        listStockLevels(),
+        listPurchaseOrders(),
+        listExpenseCategories(),
+      ])
       setSuppliers(suppliersData)
       setItems(itemsData.filter((i) => i.is_active))
       setOrders(ordersData)
+      const activeExpenseCategories = expenseCategoriesData.filter((c) => c.is_active)
+      setExpenseCategories(activeExpenseCategories)
       if (!supplierId && suppliersData[0]) setSupplierId(suppliersData[0].id)
+      if (!expenseCategoryId) {
+        const inventoryPurchases = activeExpenseCategories.find((c) => c.name === 'Inventory Purchases')
+        setExpenseCategoryId(inventoryPurchases?.id ?? activeExpenseCategories[0]?.id ?? '')
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to load purchase orders')
     } finally {
@@ -107,6 +122,7 @@ export function PurchaseOrdersPage() {
         orderDate: localDateString(),
         deliveryCharge: Number(deliveryCharge) || 0,
         paymentMethod,
+        expenseCategoryId: expenseCategoryId || null,
         items: lines.map((l) => ({ itemId: l.itemId, quantity: Number(l.quantity), unitCost: Number(l.unitCost), discountAmount: 0 })),
       })
       toast.success('Purchase order recorded, stock updated')
@@ -168,6 +184,21 @@ export function PurchaseOrdersPage() {
                   {Object.entries(METHOD_LABELS).map(([value, label]) => (
                     <SelectItem key={value} value={value}>
                       {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Expense category</Label>
+              <Select value={expenseCategoryId} onValueChange={setExpenseCategoryId}>
+                <SelectTrigger className="w-44">
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {expenseCategories.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
