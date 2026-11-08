@@ -59,9 +59,6 @@ const SalesReportPage = lazyWithRetry(() => import('@/features/reports/SalesRepo
 const CustomerInsightsPage = lazyWithRetry(() =>
   import('@/features/reports/CustomerInsightsPage').then((m) => ({ default: m.CustomerInsightsPage })),
 )
-const RepaintSalesReportPage = lazyWithRetry(() =>
-  import('@/features/reports/RepaintSalesReportPage').then((m) => ({ default: m.RepaintSalesReportPage })),
-)
 const AppointmentsPage =lazyWithRetry(() => import('@/features/appointments/AppointmentsPage').then((m) => ({ default: m.AppointmentsPage })))
 const CustomersPage = lazyWithRetry(() => import('@/features/customers/CustomersPage').then((m) => ({ default: m.CustomersPage })))
 const TransactionsPage = lazyWithRetry(() => import('@/features/sales/TransactionsPage').then((m) => ({ default: m.TransactionsPage })))
@@ -269,14 +266,6 @@ export default function App() {
                   element={
                     <RoleGuard allowedRoles={['admin', 'manager']}>
                       <CustomerInsightsPage />
-                    </RoleGuard>
-                  }
-                />
-                <Route
-                  path="/reports/repaint-sales"
-                  element={
-                    <RoleGuard allowedRoles={['admin', 'manager']}>
-                      <RepaintSalesReportPage />
                     </RoleGuard>
                   }
                 />

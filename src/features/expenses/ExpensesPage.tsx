@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatMoney } from '@/lib/money'
 import { localDateString } from '@/lib/date'
 import {
@@ -84,6 +85,10 @@ export function ExpensesPage() {
   const categoryName = (id: string) => categories.find((c) => c.id === id)?.name ?? 'Uncategorized'
   const total = expenses.filter((e) => !e.is_voided).reduce((sum, e) => sum + e.amount, 0)
 
+  const repaintCategoryIds = new Set(categories.filter((c) => /repaint/i.test(c.name)).map((c) => c.id))
+  const repaintExpenses = expenses.filter((e) => repaintCategoryIds.has(e.category_id))
+  const repaintTotal = repaintExpenses.filter((e) => !e.is_voided).reduce((sum, e) => sum + e.amount, 0)
+
   async function handleSubmit() {
     if (!categoryId || !description.trim() || !amount) return
     setSubmitting(true)
@@ -121,6 +126,77 @@ export function ExpensesPage() {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to void expense')
     }
+  }
+
+  function renderTable(rows: Expense[], emptyMessage: string) {
+    return (
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Date</TableHead>
+            <TableHead>Category</TableHead>
+            <TableHead>Description</TableHead>
+            <TableHead>Paid to</TableHead>
+            <TableHead>Reference</TableHead>
+            <TableHead>Method</TableHead>
+            <TableHead className="text-right">Amount</TableHead>
+            <TableHead />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((row) => (
+            <TableRow key={row.id} className={row.is_voided ? 'opacity-50' : undefined}>
+              <TableCell>{row.expense_date}</TableCell>
+              <TableCell>{categoryName(row.category_id)}</TableCell>
+              <TableCell>
+                {row.description}
+                {row.is_voided && (
+                  <Badge variant="outline" className="ml-2">
+                    Voided
+                  </Badge>
+                )}
+              </TableCell>
+              <TableCell>{row.paid_to ?? '—'}</TableCell>
+              <TableCell>{row.reference_note ?? '—'}</TableCell>
+              <TableCell>{METHOD_LABELS[row.payment_method]}</TableCell>
+              <TableCell className="text-right">{formatMoney(row.amount)}</TableCell>
+              <TableCell>
+                {!row.is_voided && (
+                  <Dialog open={voidTarget?.id === row.id} onOpenChange={(open) => !open && setVoidTarget(null)}>
+                    <DialogTrigger asChild>
+                      <Button size="sm" variant="ghost" onClick={() => setVoidTarget(row)}>
+                        Void
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Void expense</DialogTitle>
+                      </DialogHeader>
+                      <div className="flex flex-col gap-3">
+                        <p className="text-sm text-muted-foreground">
+                          {row.description} — {formatMoney(row.amount)}
+                        </p>
+                        <Input placeholder="Reason (required)" value={voidReason} onChange={(e) => setVoidReason(e.target.value)} />
+                        <Button onClick={submitVoid} disabled={!voidReason.trim()}>
+                          Confirm void
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                )}
+              </TableCell>
+            </TableRow>
+          ))}
+          {!loading && rows.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={8} className="text-center text-muted-foreground">
+                {emptyMessage}
+              </TableCell>
+            </TableRow>
+          )}
+        </TableBody>
+      </Table>
+    )
   }
 
   return (
@@ -206,84 +282,38 @@ export function ExpensesPage() {
             <Label>To</Label>
             <Input type="date" className="w-40" value={to} onChange={(e) => setTo(e.target.value)} />
           </div>
-          <div className="ml-auto text-lg font-semibold">Total: {formatMoney(total)}</div>
         </CardContent>
       </Card>
 
-      <Card>
-        <CardContent className="pt-6">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead>Paid to</TableHead>
-                <TableHead>Reference</TableHead>
-                <TableHead>Method</TableHead>
-                <TableHead className="text-right">Amount</TableHead>
-                <TableHead />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {expenses.map((row) => (
-                <TableRow key={row.id} className={row.is_voided ? 'opacity-50' : undefined}>
-                  <TableCell>{row.expense_date}</TableCell>
-                  <TableCell>{categoryName(row.category_id)}</TableCell>
-                  <TableCell>
-                    {row.description}
-                    {row.is_voided && (
-                      <Badge variant="outline" className="ml-2">
-                        Voided
-                      </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell>{row.paid_to ?? '—'}</TableCell>
-                  <TableCell>{row.reference_note ?? '—'}</TableCell>
-                  <TableCell>{METHOD_LABELS[row.payment_method]}</TableCell>
-                  <TableCell className="text-right">{formatMoney(row.amount)}</TableCell>
-                  <TableCell>
-                    {!row.is_voided && (
-                      <Dialog open={voidTarget?.id === row.id} onOpenChange={(open) => !open && setVoidTarget(null)}>
-                        <DialogTrigger asChild>
-                          <Button size="sm" variant="ghost" onClick={() => setVoidTarget(row)}>
-                            Void
-                          </Button>
-                        </DialogTrigger>
-                        <DialogContent>
-                          <DialogHeader>
-                            <DialogTitle>Void expense</DialogTitle>
-                          </DialogHeader>
-                          <div className="flex flex-col gap-3">
-                            <p className="text-sm text-muted-foreground">
-                              {row.description} — {formatMoney(row.amount)}
-                            </p>
-                            <Input
-                              placeholder="Reason (required)"
-                              value={voidReason}
-                              onChange={(e) => setVoidReason(e.target.value)}
-                            />
-                            <Button onClick={submitVoid} disabled={!voidReason.trim()}>
-                              Confirm void
-                            </Button>
-                          </div>
-                        </DialogContent>
-                      </Dialog>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-              {!loading && expenses.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={8} className="text-center text-muted-foreground">
-                    No expenses in this period.
-                  </TableCell>
-                </TableRow>
+      <Tabs defaultValue="all">
+        <TabsList>
+          <TabsTrigger value="all">All expenses</TabsTrigger>
+          <TabsTrigger value="repaint">Repaint</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="all" className="flex flex-col gap-3">
+          <div className="text-right text-lg font-semibold">Total: {formatMoney(total)}</div>
+          <Card>
+            <CardContent className="pt-6">{renderTable(expenses, 'No expenses in this period.')}</CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="repaint" className="flex flex-col gap-3">
+          <div className="text-right text-lg font-semibold">Total: {formatMoney(repaintTotal)}</div>
+          <Card>
+            <CardContent className="pt-6">
+              {repaintCategoryIds.size === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No "Repaint" expense category is set up for this tenant yet. Add one on the Expense Categories page to use this
+                  tab.
+                </p>
+              ) : (
+                renderTable(repaintExpenses, 'No repaint expenses in this period.')
               )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
