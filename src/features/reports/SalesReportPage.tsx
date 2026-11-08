@@ -76,15 +76,20 @@ export function SalesReportPage() {
     load(range.from, range.to)
   }
 
+  // Same loose name match ExpensesPage's own Repaint tab uses for its expense category, so all
+  // three places agree on what counts as a "repaint expense". All sales and Repaint must be a
+  // clean partition of expenses too, not just revenue -- a repaint-categorized expense (including
+  // a repaint purchase order, which posts here as an expense) belongs ONLY in the Repaint tab's
+  // numbers, never in All Sales'.
+  const nonRepaintExpenseCategories = expenses?.byCategory.filter((c) => !/repaint/i.test(c.name)) ?? []
+  const repaintExpenseCategories = expenses?.byCategory.filter((c) => /repaint/i.test(c.name)) ?? []
+  const nonRepaintExpenseTotal = nonRepaintExpenseCategories.reduce((sum, c) => sum + c.total, 0)
+  const repaintExpenseTotal = repaintExpenseCategories.reduce((sum, c) => sum + c.total, 0)
+
   // grossSales is already net of the card processing fee, so it's not subtracted again here.
   // Commission isn't subtracted separately either -- once a payroll period is marked paid, it's
   // recorded as a real expense (category: Commission Payouts), already counted in expenses.total.
-  const net = sales && expenses ? sales.grossSales - expenses.total : 0
-
-  // Same loose name match ExpensesPage's own Repaint tab uses for its expense category, so both
-  // pages agree on what counts as a "repaint expense" -- there's no separate RPC for this, since
-  // expenses.byCategory (already loaded for the All Sales tab) already has everything needed.
-  const repaintExpenseTotal = expenses?.byCategory.filter((c) => /repaint/i.test(c.name)).reduce((sum, c) => sum + c.total, 0) ?? 0
+  const net = sales ? sales.grossSales - nonRepaintExpenseTotal : 0
   const repaintNet = (repaint && repaint.categoryFound ? repaint.totalRevenue : 0) - repaintExpenseTotal
 
   function csvCell(value: string | number) {
@@ -102,7 +107,7 @@ export function SalesReportPage() {
       ['Gross sales', sales.grossSales.toFixed(2)],
       ['Sale count', String(sales.saleCount)],
       ['Voided sales', String(sales.voidedCount)],
-      ['Expenses', expenses.total.toFixed(2)],
+      ['Expenses', nonRepaintExpenseTotal.toFixed(2)],
       ['Card processing fees', sales.cardProcessingFeeTotal.toFixed(2)],
       ['Net', net.toFixed(2)],
       ['Discounts given', sales.discountTotal.toFixed(2)],
@@ -121,7 +126,7 @@ export function SalesReportPage() {
       [],
       ['Expenses by category'],
       ['Category', 'Total'],
-      ...expenses.byCategory.map((c) => [c.name, c.total.toFixed(2)]),
+      ...nonRepaintExpenseCategories.map((c) => [c.name, c.total.toFixed(2)]),
       [],
       ['Cash advances by employee'],
       ['Employee', 'Total'],
@@ -147,13 +152,23 @@ export function SalesReportPage() {
       ['Gross', repaint.totalRevenue.toFixed(2)],
       ['Expenses', repaintExpenseTotal.toFixed(2)],
       ['Net', repaintNet.toFixed(2)],
+      ['Card processing fees', repaint.cardProcessingFeeTotal.toFixed(2)],
       ['Discounts given', repaint.discountTotal.toFixed(2)],
+      ['Promotions given', repaint.promotionDiscountTotal.toFixed(2)],
       ['Line items', String(repaint.lineCount)],
       ['Jobs', String(repaint.jobCount)],
+      [],
+      ['Revenue by payment method'],
+      ['Method', 'Total'],
+      ...repaint.byMethod.map((m) => [METHOD_LABELS[m.method] ?? m.method, m.total.toFixed(2)]),
       [],
       ['By service'],
       ['Service', 'Count', 'Total'],
       ...repaint.byService.map((s) => [s.name, String(s.count), s.total.toFixed(2)]),
+      [],
+      ['Expenses by category'],
+      ['Category', 'Total'],
+      ...repaintExpenseCategories.map((c) => [c.name, c.total.toFixed(2)]),
       [],
       ['Transactions'],
       ['Date', 'Sale #', 'Job #', 'Plate', 'Service', 'Amount', 'Discount'],
@@ -227,7 +242,7 @@ export function SalesReportPage() {
                 <Card>
                   <CardContent className="pt-6">
                     <div className="text-sm text-muted-foreground">Expenses</div>
-                    <div className="text-xl font-semibold">{formatMoney(expenses.total)}</div>
+                    <div className="text-xl font-semibold">{formatMoney(nonRepaintExpenseTotal)}</div>
                   </CardContent>
                 </Card>
                 <Card>
@@ -316,8 +331,10 @@ export function SalesReportPage() {
                     <CardTitle className="text-base">Expenses by category</CardTitle>
                   </CardHeader>
                   <CardContent className="flex flex-col gap-2">
-                    {expenses.byCategory.length === 0 && <p className="text-sm text-muted-foreground">No expenses in this period.</p>}
-                    {expenses.byCategory.map((c) => (
+                    {nonRepaintExpenseCategories.length === 0 && (
+                      <p className="text-sm text-muted-foreground">No expenses in this period.</p>
+                    )}
+                    {nonRepaintExpenseCategories.map((c) => (
                       <div key={c.name} className="flex justify-between text-sm">
                         <span>{c.name}</span>
                         <span className="font-medium">{formatMoney(c.total)}</span>
@@ -392,18 +409,70 @@ export function SalesReportPage() {
                 </Card>
               </div>
 
+              {/* No "Cash advances" here, by design -- a cash advance is tied to an employee, not
+                  to whether the work they're assigned is repaint or regular wash, so there's no
+                  data that would make a repaint-scoped figure meaningful. */}
+              <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="text-sm text-muted-foreground">Promotions given</div>
+                    <div className="text-xl font-semibold">{formatMoney(repaint.promotionDiscountTotal)}</div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="text-sm text-muted-foreground">Card processing fees</div>
+                    <div className="text-xl font-semibold">{formatMoney(repaint.cardProcessingFeeTotal)}</div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">Revenue by payment method</CardTitle>
+                  </CardHeader>
+                  <CardContent className="flex flex-col gap-2">
+                    {repaint.byMethod.length === 0 && <p className="text-sm text-muted-foreground">No repaint sales in this period.</p>}
+                    {repaint.byMethod.map((m) => (
+                      <div key={m.method} className="flex justify-between text-sm">
+                        <span>{METHOD_LABELS[m.method] ?? m.method}</span>
+                        <span className="font-medium">{formatMoney(m.total)}</span>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">By service</CardTitle>
+                  </CardHeader>
+                  <CardContent className="flex flex-col gap-2">
+                    {repaint.byService.length === 0 && <p className="text-sm text-muted-foreground">No repaint sales in this period.</p>}
+                    {repaint.byService.map((s) => (
+                      <div key={s.name} className="flex justify-between text-sm">
+                        <span>
+                          {s.name} · {s.count}×
+                        </span>
+                        <span className="font-medium">{formatMoney(s.total)}</span>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              </div>
+
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base">By service</CardTitle>
+                  <CardTitle className="text-base">Expenses by category</CardTitle>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-2">
-                  {repaint.byService.length === 0 && <p className="text-sm text-muted-foreground">No repaint sales in this period.</p>}
-                  {repaint.byService.map((s) => (
-                    <div key={s.name} className="flex justify-between text-sm">
-                      <span>
-                        {s.name} · {s.count}×
-                      </span>
-                      <span className="font-medium">{formatMoney(s.total)}</span>
+                  {repaintExpenseCategories.length === 0 && (
+                    <p className="text-sm text-muted-foreground">No repaint expenses in this period.</p>
+                  )}
+                  {repaintExpenseCategories.map((c) => (
+                    <div key={c.name} className="flex justify-between text-sm">
+                      <span>{c.name}</span>
+                      <span className="font-medium">{formatMoney(c.total)}</span>
                     </div>
                   ))}
                 </CardContent>

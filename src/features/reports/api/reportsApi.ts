@@ -137,13 +137,36 @@ export async function getSalesReport(fromIso: string, toIso: string) {
   }
 }
 
+const EMPTY_REPAINT_REPORT = {
+  totalRevenue: 0,
+  discountTotal: 0,
+  promotionDiscountTotal: 0,
+  cardProcessingFeeTotal: 0,
+  lineCount: 0,
+  jobCount: 0,
+  byService: [] as { name: string; count: number; total: number }[],
+  byMethod: [] as { method: string; total: number }[],
+  rows: [] as {
+    saleNumber: string
+    date: string
+    jobNumber: string
+    plateNumber: string
+    serviceName: string
+    amount: number
+    discountAmount: number
+  }[],
+}
+
 // Scoped to whichever service_categories row is named "Repaint" for this tenant -- repaint is a
-// non-carwash service line sold alongside regular car wash jobs, so owners want its own revenue
-// total separate from the main Sales Report instead of buried inside "Services" (and, per
-// getSalesReport() above, now fully excluded from "All sales" too). Payment-method and
-// discount-pool breakdowns don't carry over here: those are sale-level (a repaint line can share a
-// sale/payment with ordinary wash services), so this report only totals what's directly
-// attributable to repaint line items themselves.
+// non-carwash service line sold alongside regular car wash jobs, so owners want its own full
+// report (gross/expenses/net, payment mix, discounts, card fees), not just a line-item total
+// buried inside "Services". The business submits "All sales" to their franchise owner and repaint
+// isn't part of that deal, so the two reports must be a clean, non-overlapping partition -- every
+// peso here is excluded from getSalesReport() above, and vice versa. A sale that mixes a repaint
+// line with an ordinary one (rare, but happens) has its sale-level fields -- manual discount, card
+// fee, promotion/loyalty/membership discount, and each payment -- apportioned by this sale's share
+// of repaint line revenue, the exact mirror of how getSalesReport() apportions the non-repaint
+// share. Per-line discounts need no apportioning; sale_items.discount_amount is already exact.
 export async function getRepaintSalesReport(fromIso: string, toIso: string) {
   const { data: category, error: catError } = await supabase
     .from('service_categories')
@@ -164,24 +187,24 @@ export async function getRepaintSalesReport(fromIso: string, toIso: string) {
   const categoryServiceIds = (categoryServices ?? []).map((s) => s.id)
 
   if (categoryServiceIds.length === 0) {
-    return { categoryFound: true as const, categoryName: category.name, totalRevenue: 0, discountTotal: 0, lineCount: 0, jobCount: 0, byService: [], rows: [] }
+    return { categoryFound: true as const, categoryName: category.name, ...EMPTY_REPAINT_REPORT }
   }
 
-  const { data: jobServices, error: jobServicesError } = await supabase
+  const { data: jobServicesAll, error: jobServicesError } = await supabase
     .from('job_services')
     .select('id, job_id, service_id')
     .in('service_id', categoryServiceIds)
   if (jobServicesError) throw jobServicesError
-  const jobServiceIds = (jobServices ?? []).map((js) => js.id)
-  const jobIdByJobServiceId = new Map((jobServices ?? []).map((js) => [js.id, js.job_id]))
+  const repaintJobServiceIds = new Set((jobServicesAll ?? []).map((js) => js.id))
+  const jobIdByJobServiceId = new Map((jobServicesAll ?? []).map((js) => [js.id, js.job_id]))
 
-  if (jobServiceIds.length === 0) {
-    return { categoryFound: true as const, categoryName: category.name, totalRevenue: 0, discountTotal: 0, lineCount: 0, jobCount: 0, byService: [], rows: [] }
+  if (repaintJobServiceIds.size === 0) {
+    return { categoryFound: true as const, categoryName: category.name, ...EMPTY_REPAINT_REPORT }
   }
 
   const { data: sales, error: salesError } = await supabase
     .from('sales')
-    .select('id, sale_number, created_at, status')
+    .select('*')
     .gte('created_at', fromIso)
     .lte('created_at', toIso)
     .eq('status', 'completed')
@@ -190,17 +213,78 @@ export async function getRepaintSalesReport(fromIso: string, toIso: string) {
   const saleById = new Map((sales ?? []).map((s) => [s.id, s]))
 
   if (saleIds.length === 0) {
-    return { categoryFound: true as const, categoryName: category.name, totalRevenue: 0, discountTotal: 0, lineCount: 0, jobCount: 0, byService: [], rows: [] }
+    return { categoryFound: true as const, categoryName: category.name, ...EMPTY_REPAINT_REPORT }
   }
 
-  const { data: items, error: itemsError } = await supabase
-    .from('sale_items')
-    .select('*')
-    .in('sale_id', saleIds)
-    .in('job_service_id', jobServiceIds)
-  if (itemsError) throw itemsError
+  const [itemsRes, paymentsRes] = await Promise.all([
+    supabase.from('sale_items').select('*').in('sale_id', saleIds),
+    supabase.from('payments').select('*').in('sale_id', saleIds),
+  ])
+  if (itemsRes.error) throw itemsRes.error
+  if (paymentsRes.error) throw paymentsRes.error
+  const items = itemsRes.data ?? []
 
-  const matched = items ?? []
+  function isRepaintItem(item: (typeof items)[number]) {
+    return item.line_type === 'job_service' && !!item.job_service_id && repaintJobServiceIds.has(item.job_service_id)
+  }
+
+  const itemsBySale = new Map<string, typeof items>()
+  for (const item of items) {
+    const bucket = itemsBySale.get(item.sale_id) ?? []
+    bucket.push(item)
+    itemsBySale.set(item.sale_id, bucket)
+  }
+
+  const byService = new Map<string, { count: number; total: number }>()
+  const matched: typeof items = []
+  let totalRevenue = 0
+  let discountTotal = 0
+  let promotionDiscountTotal = 0
+  let cardProcessingFeeTotal = 0
+  // sale id -> the fraction of that sale's line revenue that IS repaint, reused below to
+  // apportion each of that sale's payments the same way when building the by-method breakdown.
+  const repaintFractionBySale = new Map<string, number>()
+
+  for (const sale of sales ?? []) {
+    const saleItems = itemsBySale.get(sale.id) ?? []
+    const repaintItems = saleItems.filter((i) => isRepaintItem(i))
+    if (repaintItems.length === 0) continue
+
+    const saleItemsTotal = saleItems.reduce((sum, i) => sum + i.line_total, 0)
+    const repaintItemsTotal = repaintItems.reduce((sum, i) => sum + i.line_total, 0)
+    const fraction = saleItemsTotal > 0 ? repaintItemsTotal / saleItemsTotal : 0
+    repaintFractionBySale.set(sale.id, fraction)
+
+    for (const item of repaintItems) {
+      matched.push(item)
+      const bucket = byService.get(item.description) ?? { count: 0, total: 0 }
+      bucket.count += 1
+      bucket.total += item.line_total
+      byService.set(item.description, bucket)
+    }
+
+    const repaintCardFee = sale.card_processing_fee * fraction
+    const repaintSaleLevelDiscount =
+      (sale.manual_discount_amount + sale.promotion_discount_amount + sale.loyalty_discount_amount + sale.membership_discount_amount) * fraction
+
+    // Net of the card processing fee, same definition getSalesReport() uses for its own Gross.
+    totalRevenue += repaintItemsTotal - repaintSaleLevelDiscount - repaintCardFee
+    discountTotal += repaintItems.reduce((sum, i) => sum + i.discount_amount, 0) + sale.manual_discount_amount * fraction
+    promotionDiscountTotal += sale.promotion_discount_amount * fraction
+    cardProcessingFeeTotal += repaintCardFee
+  }
+
+  if (matched.length === 0) {
+    return { categoryFound: true as const, categoryName: category.name, ...EMPTY_REPAINT_REPORT }
+  }
+
+  const byMethod = new Map<string, number>()
+  for (const p of paymentsRes.data ?? []) {
+    const fraction = repaintFractionBySale.get(p.sale_id)
+    if (!fraction) continue
+    byMethod.set(p.method, (byMethod.get(p.method) ?? 0) + p.amount * fraction)
+  }
+
   const jobIds = [...new Set(matched.map((i) => jobIdByJobServiceId.get(i.job_service_id!)).filter((id): id is string => !!id))]
 
   const jobsRes = jobIds.length
@@ -215,13 +299,7 @@ export async function getRepaintSalesReport(fromIso: string, toIso: string) {
   if (vehiclesError) throw vehiclesError
   const plateByVehicleId = new Map((vehicles ?? []).map((v) => [v.id, v.plate_number]))
 
-  const byService = new Map<string, { count: number; total: number }>()
   const rows = matched.map((item) => {
-    const bucket = byService.get(item.description) ?? { count: 0, total: 0 }
-    bucket.count += 1
-    bucket.total += item.line_total
-    byService.set(item.description, bucket)
-
     const jobId = jobIdByJobServiceId.get(item.job_service_id!) ?? null
     const job = jobId ? jobById.get(jobId) : undefined
     const sale = saleById.get(item.sale_id)
@@ -240,11 +318,14 @@ export async function getRepaintSalesReport(fromIso: string, toIso: string) {
   return {
     categoryFound: true as const,
     categoryName: category.name,
-    totalRevenue: matched.reduce((sum, i) => sum + i.line_total, 0),
-    discountTotal: matched.reduce((sum, i) => sum + i.discount_amount, 0),
+    totalRevenue,
+    discountTotal,
+    promotionDiscountTotal,
+    cardProcessingFeeTotal,
     lineCount: matched.length,
     jobCount: jobIds.length,
     byService: [...byService.entries()].map(([name, v]) => ({ name, ...v })).sort((a, b) => b.total - a.total),
+    byMethod: [...byMethod.entries()].map(([method, total]) => ({ method, total })).sort((a, b) => b.total - a.total),
     rows,
   }
 }
