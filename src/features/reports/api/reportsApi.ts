@@ -58,6 +58,117 @@ export async function getSalesReport(fromIso: string, toIso: string) {
   }
 }
 
+// Scoped to whichever service_categories row is named "Repaint" for this tenant -- repaint is a
+// non-carwash service line sold alongside regular car wash jobs, so owners want its own revenue
+// total separate from the main Sales Report instead of buried inside "Services". Payment-method
+// and discount-pool breakdowns don't carry over here: those are sale-level (a repaint line can
+// share a sale/payment with ordinary wash services), so this report only totals what's directly
+// attributable to repaint line items themselves.
+export async function getRepaintSalesReport(fromIso: string, toIso: string) {
+  const { data: category, error: catError } = await supabase
+    .from('service_categories')
+    .select('id, name')
+    .ilike('name', 'Repaint')
+    .limit(1)
+    .maybeSingle()
+  if (catError) throw catError
+  if (!category) {
+    return { categoryFound: false as const }
+  }
+
+  const { data: categoryServices, error: servicesError } = await supabase
+    .from('services')
+    .select('id')
+    .eq('category_id', category.id)
+  if (servicesError) throw servicesError
+  const categoryServiceIds = (categoryServices ?? []).map((s) => s.id)
+
+  if (categoryServiceIds.length === 0) {
+    return { categoryFound: true as const, categoryName: category.name, totalRevenue: 0, discountTotal: 0, lineCount: 0, jobCount: 0, byService: [], rows: [] }
+  }
+
+  const { data: jobServices, error: jobServicesError } = await supabase
+    .from('job_services')
+    .select('id, job_id, service_id')
+    .in('service_id', categoryServiceIds)
+  if (jobServicesError) throw jobServicesError
+  const jobServiceIds = (jobServices ?? []).map((js) => js.id)
+  const jobIdByJobServiceId = new Map((jobServices ?? []).map((js) => [js.id, js.job_id]))
+
+  if (jobServiceIds.length === 0) {
+    return { categoryFound: true as const, categoryName: category.name, totalRevenue: 0, discountTotal: 0, lineCount: 0, jobCount: 0, byService: [], rows: [] }
+  }
+
+  const { data: sales, error: salesError } = await supabase
+    .from('sales')
+    .select('id, sale_number, created_at, status')
+    .gte('created_at', fromIso)
+    .lte('created_at', toIso)
+    .eq('status', 'completed')
+  if (salesError) throw salesError
+  const saleIds = (sales ?? []).map((s) => s.id)
+  const saleById = new Map((sales ?? []).map((s) => [s.id, s]))
+
+  if (saleIds.length === 0) {
+    return { categoryFound: true as const, categoryName: category.name, totalRevenue: 0, discountTotal: 0, lineCount: 0, jobCount: 0, byService: [], rows: [] }
+  }
+
+  const { data: items, error: itemsError } = await supabase
+    .from('sale_items')
+    .select('*')
+    .in('sale_id', saleIds)
+    .in('job_service_id', jobServiceIds)
+  if (itemsError) throw itemsError
+
+  const matched = items ?? []
+  const jobIds = [...new Set(matched.map((i) => jobIdByJobServiceId.get(i.job_service_id!)).filter((id): id is string => !!id))]
+
+  const jobsRes = jobIds.length
+    ? await supabase.from('jobs').select('id, job_number, vehicle_id').in('id', jobIds)
+    : { data: [], error: null }
+  if (jobsRes.error) throw jobsRes.error
+  const jobById = new Map((jobsRes.data ?? []).map((j) => [j.id, j]))
+  const vehicleIds = [...new Set((jobsRes.data ?? []).map((j) => j.vehicle_id).filter((id): id is string => !!id))]
+  const { data: vehicles, error: vehiclesError } = vehicleIds.length
+    ? await supabase.from('vehicles').select('id, plate_number').in('id', vehicleIds)
+    : { data: [], error: null }
+  if (vehiclesError) throw vehiclesError
+  const plateByVehicleId = new Map((vehicles ?? []).map((v) => [v.id, v.plate_number]))
+
+  const byService = new Map<string, { count: number; total: number }>()
+  const rows = matched.map((item) => {
+    const bucket = byService.get(item.description) ?? { count: 0, total: 0 }
+    bucket.count += 1
+    bucket.total += item.line_total
+    byService.set(item.description, bucket)
+
+    const jobId = jobIdByJobServiceId.get(item.job_service_id!) ?? null
+    const job = jobId ? jobById.get(jobId) : undefined
+    const sale = saleById.get(item.sale_id)
+    return {
+      saleNumber: sale?.sale_number ?? '—',
+      date: sale?.created_at ?? item.created_at,
+      jobNumber: job?.job_number ?? '—',
+      plateNumber: job?.vehicle_id ? (plateByVehicleId.get(job.vehicle_id) ?? '—') : '—',
+      serviceName: item.description,
+      amount: item.line_total,
+      discountAmount: item.discount_amount,
+    }
+  })
+  rows.sort((a, b) => b.date.localeCompare(a.date))
+
+  return {
+    categoryFound: true as const,
+    categoryName: category.name,
+    totalRevenue: matched.reduce((sum, i) => sum + i.line_total, 0),
+    discountTotal: matched.reduce((sum, i) => sum + i.discount_amount, 0),
+    lineCount: matched.length,
+    jobCount: jobIds.length,
+    byService: [...byService.entries()].map(([name, v]) => ({ name, ...v })).sort((a, b) => b.total - a.total),
+    rows,
+  }
+}
+
 export async function getExpensesByCategory(fromIso: string, toIso: string) {
   const { data, error } = await supabase
     .from('expenses')

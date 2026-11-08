@@ -17,6 +17,7 @@ import {
   Menu,
   Moon,
   Package,
+  PaintBucket,
   Percent,
   Receipt,
   Ruler,
@@ -73,6 +74,7 @@ const navEntries: NavEntry[] = [
     items: [
       { to: '/reports/commission', label: 'Commission Report', icon: Percent },
       { to: '/reports/sales', label: 'Sales Report', icon: BarChart3 },
+      { to: '/reports/repaint-sales', label: 'Repaint Sales Report', icon: PaintBucket },
       { to: '/reports/customers', label: 'Customer Insights', icon: UserCheck },
     ],
   },
