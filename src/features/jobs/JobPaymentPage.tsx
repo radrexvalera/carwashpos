@@ -70,6 +70,9 @@ export function JobPaymentPage() {
   const [plate, setPlate] = useState('')
   const [vehicleModel, setVehicleModel] = useState<string | null>(null)
   const [crewNames, setCrewNames] = useState<string[]>([])
+  const [crew, setCrew] = useState<{ id: string; name: string }[]>([])
+  const [isRepaintJob, setIsRepaintJob] = useState(false)
+  const [manualCommissions, setManualCommissions] = useState<Record<string, string>>({})
   const [jobServices, setJobServices] = useState<JobService[]>([])
   const [discounts, setDiscounts] = useState<Record<string, string>>({})
   // A freebie is just a 100%-off discount on that one line under the hood (create_sale() needs no
@@ -116,6 +119,8 @@ export function JobPaymentPage() {
         setPlate(jobData.vehicle.plate_number)
         setVehicleModel(jobData.vehicle.model)
         setCrewNames(jobData.crewNames)
+        setCrew(jobData.crew)
+        setIsRepaintJob(jobData.isRepaintJob)
         setJobServices(jobData.jobServices)
         setRetailItems(jobData.retailItems)
         setLocationName(jobData.locationName)
@@ -135,6 +140,8 @@ export function JobPaymentPage() {
           setPlate(jobData.vehicle.plate_number)
           setVehicleModel(jobData.vehicle.model)
           setCrewNames(jobData.crewNames)
+          setCrew(jobData.crew)
+          setIsRepaintJob(jobData.isRepaintJob)
           setJobServices(jobData.jobServices)
           setRetailItems([])
           setLocationName(jobData.locationName)
@@ -191,6 +198,12 @@ export function JobPaymentPage() {
   const enteredAmount = Number(amount) || 0
   const changeDue = method === 'cash' && enteredAmount > remaining ? Math.round((enteredAmount - remaining) * 100) / 100 : 0
 
+  // Repaint jobs skip auto-commission server-side (0094_repaint_manual_commission.sql) -- every
+  // crew member needs an explicit figure here, since there's no formula to fall back on for
+  // whoever gets left blank.
+  const manualCommissionsValid =
+    !isRepaintJob || (crew.length > 0 && crew.every((c) => manualCommissions[c.id] !== undefined && manualCommissions[c.id] !== '' && Number(manualCommissions[c.id]) >= 0))
+
   function toggleFreebie(js: JobService) {
     const next = !freebies[js.id]
     setFreebies((prev) => ({ ...prev, [js.id]: next }))
@@ -232,6 +245,7 @@ export function JobPaymentPage() {
 
   async function handleSubmit() {
     if (!jobId || !shiftId || !profile) return
+    if (isRepaintJob && !manualCommissionsValid) return
     setSubmitting(true)
     // Generated once and reused for both the live attempt and the offline-queued fallback below --
     // create_sale() is idempotent on it, so if the live call actually reached the server but its
@@ -247,6 +261,9 @@ export function JobPaymentPage() {
       payments,
       manualDiscountType: discountValueNum > 0 ? discountType : undefined,
       manualDiscountValue: discountValueNum > 0 ? discountValueNum : undefined,
+      manualCommissions: isRepaintJob
+        ? crew.map((c) => ({ employeeId: c.id, amount: Number(manualCommissions[c.id] || 0) }))
+        : undefined,
     }
     try {
       try {
@@ -505,6 +522,38 @@ export function JobPaymentPage() {
         </CardContent>
       </Card>
 
+      {isRepaintJob && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Commission (manual entry)</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            <p className="text-sm text-muted-foreground">
+              This job has a repaint service -- commission isn't calculated automatically. Enter each crew member's
+              commission below.
+            </p>
+            {crew.length === 0 ? (
+              <p className="text-sm text-destructive">No crew assigned to this job yet -- assign crew before collecting payment.</p>
+            ) : (
+              crew.map((c) => (
+                <div key={c.id} className="flex items-center justify-between gap-2">
+                  <span>{c.name}</span>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className="w-28"
+                    placeholder="0.00"
+                    value={manualCommissions[c.id] ?? ''}
+                    onChange={(e) => setManualCommissions((prev) => ({ ...prev, [c.id]: e.target.value }))}
+                  />
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardContent className="flex flex-col gap-1 pt-6">
           {manualDiscountAmount > 0 && (
@@ -611,7 +660,12 @@ export function JobPaymentPage() {
 
           <Button
             size="lg"
-            disabled={submitting || (roundedTotal > 0.01 && payments.length === 0) || Math.abs(remaining) > 0.01}
+            disabled={
+              submitting ||
+              (roundedTotal > 0.01 && payments.length === 0) ||
+              Math.abs(remaining) > 0.01 ||
+              (isRepaintJob && !manualCommissionsValid)
+            }
             onClick={handleSubmit}
           >
             Complete payment

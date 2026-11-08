@@ -29,10 +29,25 @@ export async function getJobForPayment(jobId: string) {
   if (servicesError) throw servicesError
 
   const serviceIds = (jobServices ?? []).map((js) => js.service_id)
-  const { data: services, error: servicesLookupError } = await supabase.from('services').select('id, name').in('id', serviceIds)
+  const { data: services, error: servicesLookupError } = await supabase
+    .from('services')
+    .select('id, name, category_id')
+    .in('id', serviceIds)
   if (servicesLookupError) throw servicesLookupError
 
   const serviceNameById = new Map((services ?? []).map((s) => [s.id, s.name]))
+
+  // Repaint jobs skip auto-commission entirely (see 0094_repaint_manual_commission.sql) -- the
+  // cashier types each crew member's commission in by hand here instead. Scoped the same way as
+  // the Repaint Sales Report / Repaint expenses tab: any line in a category literally named
+  // "Repaint".
+  const categoryIds = [...new Set((services ?? []).map((s) => s.category_id).filter((id): id is string => !!id))]
+  const { data: categories, error: categoriesError } = categoryIds.length
+    ? await supabase.from('service_categories').select('id, name').in('id', categoryIds)
+    : { data: [], error: null }
+  if (categoriesError) throw categoriesError
+  const repaintCategoryIds = new Set((categories ?? []).filter((c) => c.name.toLowerCase() === 'repaint').map((c) => c.id))
+  const isRepaintJob = (services ?? []).some((s) => s.category_id && repaintCategoryIds.has(s.category_id))
 
   const { data: retailItems, error: retailError } = await supabase
     .from('inventory_stock_levels')
@@ -52,6 +67,7 @@ export async function getJobForPayment(jobId: string) {
     : { data: [], error: null }
   if (crewError) throw crewError
   const crewNames = (crewRows ?? []).map((e) => e.nickname || e.full_name)
+  const crew = (crewRows ?? []).map((e) => ({ id: e.id, name: e.nickname || e.full_name }))
 
   let customer: { id: string; full_name: string } | null = null
   if (vehicle.customer_id) {
@@ -72,6 +88,8 @@ export async function getJobForPayment(jobId: string) {
     retailItems: retailItems ?? [],
     customer,
     crewNames,
+    crew,
+    isRepaintJob,
   }
 }
 
@@ -114,6 +132,13 @@ export async function getJobForPaymentOffline(jobId: string, tenantId: string) {
     retailItems: [] as { id: string; name: string; retail_price: number | null }[],
     customer: null as { id: string; full_name: string } | null,
     crewNames: boardJob.attendantsSummary ? boardJob.attendantsSummary.split(', ') : [],
+    // Repaint manual-commission entry needs crew member ids and the job's repaint-category flag,
+    // neither of which boardJobs caches -- unsupported offline. A repaint job paid while offline
+    // just gets no commission entered (complete_job() still skips its own auto-calc for it once
+    // synced, since that's a server-side check against the real service category), same as any
+    // other offline gap in this fallback.
+    crew: [] as { id: string; name: string }[],
+    isRepaintJob: false,
   }
 }
 
@@ -155,6 +180,10 @@ export async function getJobForPaymentFromPendingLocal(jobId: string, tenantId: 
     retailItems: [] as { id: string; name: string; retail_price: number | null }[],
     customer: null as { id: string; full_name: string } | null,
     crewNames: [...new Set(localJob.services.flatMap((s) => s.attendantNames))],
+    // Same offline gap as getJobForPaymentOffline() above -- no crew ids or repaint flag cached
+    // for a job that's never even synced yet.
+    crew: [] as { id: string; name: string }[],
+    isRepaintJob: false,
   }
 }
 
@@ -167,6 +196,7 @@ interface CreateSaleInput {
   payments: { method: string; amount: number; referenceNote?: string; tenderedAmount?: number; changeGiven?: number }[]
   manualDiscountType?: 'percentage' | 'fixed'
   manualDiscountValue?: number
+  manualCommissions?: { employeeId: string; amount: number }[]
 }
 
 // Promotions/loyalty/memberships/fleet billing are disabled for now (nav + Collect Payment UI both
@@ -210,6 +240,7 @@ function buildSalePayload(input: CreateSaleInput, clientGeneratedId: string) {
     membership_redemption: null,
     manual_discount_type: input.manualDiscountType ?? null,
     manual_discount_value: input.manualDiscountValue ?? null,
+    manual_commissions: (input.manualCommissions ?? []).map((c) => ({ employee_id: c.employeeId, amount: c.amount })),
     line_items: [
       ...input.lineItems.map((l) => ({
         line_type: 'job_service',
