@@ -18,6 +18,7 @@ import { listEmployees } from '@/features/employees/api/employeesApi'
 import { getPayrollEntryJobBreakdown, type PayrollJobBreakdownRow } from '@/features/commission/api/commissionReportApi'
 import { Payslip } from './Payslip'
 import { PayslipPdfDocument } from './PayslipPdfDocument'
+import { preparePayslipPdfFonts } from './payslipPdfFonts'
 import {
   addPayrollAdjustment,
   addPayrollDeduction,
@@ -335,6 +336,7 @@ export function PayrollPage() {
     if (!settings || !selected) return
     try {
       const days = Math.round((new Date(selected.end_date).getTime() - new Date(selected.start_date).getTime()) / 86_400_000) + 1
+      await preparePayslipPdfFonts()
       const blob = await pdf(
         <PayslipPdfDocument
           businessName={settings.business_name}
@@ -367,6 +369,10 @@ export function PayrollPage() {
             rate: j.rate,
             grossAmount: j.grossAmount,
             discountAmount: j.discountAmount,
+            discountDetail: j.discountDetail,
+            hasFreebie: j.hasFreebie,
+            commissionBeforeDiscount: j.commissionBeforeDiscount,
+            discountCommissionCut: j.discountCommissionCut,
             commissionAmount: j.commissionAmount,
           }))}
         />,
@@ -682,6 +688,48 @@ export function PayrollPage() {
                       </Table>
                     )}
                   </div>
+
+                  {(jobBreakdownByEntry[entry.id] ?? []).some((j) => j.discountAmount > 0) && (
+                    <div className="flex flex-col gap-2 border-t pt-3">
+                      <div className="text-sm font-medium">Discounted jobs</div>
+                      <p className="text-xs text-muted-foreground">
+                        A discount given at checkout reduces commission in proportion to the discount. A service given for free
+                        (freebie) keeps its full commission.
+                      </p>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Job #</TableHead>
+                            <TableHead>Plate</TableHead>
+                            <TableHead>Date</TableHead>
+                            <TableHead>Discounted</TableHead>
+                            <TableHead className="text-right">Discount</TableHead>
+                            <TableHead className="text-right">Commission before</TableHead>
+                            <TableHead className="text-right">Less discount</TableHead>
+                            <TableHead className="text-right">Commission</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {(jobBreakdownByEntry[entry.id] ?? [])
+                            .filter((j) => j.discountAmount > 0)
+                            .map((j, i) => (
+                              <TableRow key={`${j.jobId}-${i}`}>
+                                <TableCell>{j.jobNumber}</TableCell>
+                                <TableCell>{j.plateNumber ?? '—'}</TableCell>
+                                <TableCell>{new Date(j.date).toLocaleDateString()}</TableCell>
+                                <TableCell>{j.discountDetail || '—'}</TableCell>
+                                <TableCell className="text-right">{formatMoney(j.discountAmount)}</TableCell>
+                                <TableCell className="text-right">{formatMoney(j.commissionBeforeDiscount)}</TableCell>
+                                <TableCell className="text-right">
+                                  {j.discountCommissionCut ? `-${formatMoney(j.discountCommissionCut)}` : j.hasFreebie ? 'Freebie' : '—'}
+                                </TableCell>
+                                <TableCell className="text-right">{formatMoney(j.commissionAmount)}</TableCell>
+                              </TableRow>
+                            ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
 
                   <div className="flex flex-col gap-2 border-t pt-3">
                     <div className="text-sm font-medium">Cash advance deductions</div>

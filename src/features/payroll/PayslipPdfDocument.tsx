@@ -1,27 +1,7 @@
-import { Document, Font, Image, Page, StyleSheet, Text, View } from '@react-pdf/renderer'
+import { Document, Image, Page, StyleSheet, Text, View } from '@react-pdf/renderer'
 import { formatMoney } from '@/lib/money'
-// Helvetica (a built-in PDF standard font) has no glyph for the peso sign (U+20B1) -- it silently
-// fell back to a substitute glyph (rendered as "±") instead. Switched to Noto Sans, but the first
-// attempt at this (Google Fonts' pre-subset "latin-ext" files) made it WORSE: latin-ext and latin
-// are disjoint subsets, not nested, so latin-ext has the peso sign but is missing basic digits,
-// letters and punctuation entirely -- verified directly against the font files, not assumed. Using
-// the full (unsubsetted) variable font instead guarantees nothing is missing; confirmed it covers
-// everything from A-Z/0-9/punctuation through the peso sign before switching to it.
-//
-// Registered at both 400 and 700 purely so a fontWeight: 'bold' style resolves to a real font
-// entry instead of erroring -- react-pdf embeds whatever instance fontkit resolves by default from
-// a variable font (it doesn't request a specific wght axis value), so "bold" text won't actually
-// look bolder than regular. A real cosmetic shortcoming, but correctness (every character actually
-// rendering) matters far more than that.
-import notoSansUrl from '@/assets/fonts/NotoSans.ttf?url'
-
-Font.register({
-  family: 'Noto Sans',
-  fonts: [
-    { src: notoSansUrl, fontWeight: 400 },
-    { src: notoSansUrl, fontWeight: 700 },
-  ],
-})
+// Registers the Noto Sans font this document's styles name (see the notes in that file).
+import './payslipPdfFonts'
 
 export interface PayslipPdfJobRow {
   jobNumber: string
@@ -33,6 +13,10 @@ export interface PayslipPdfJobRow {
   rate: number
   grossAmount: number
   discountAmount?: number
+  discountDetail?: string
+  hasFreebie?: boolean
+  commissionBeforeDiscount?: number
+  discountCommissionCut?: number
   commissionAmount: number
 }
 
@@ -97,11 +81,21 @@ const styles = StyleSheet.create({
   colSize: { width: '8%', overflow: 'hidden', paddingRight: 3 },
   colDate: { width: '9%', overflow: 'hidden', paddingRight: 3 },
   colService: { width: '10%', overflow: 'hidden', paddingRight: 3 },
-  colServicesOnJob: { width: '26%', overflow: 'hidden', paddingRight: 3 },
+  colServicesOnJob: { width: '22%', overflow: 'hidden', paddingRight: 3 },
   colRate: { width: '6%', textAlign: 'right', overflow: 'hidden', paddingRight: 3 },
-  colGross: { width: '8%', textAlign: 'right', overflow: 'hidden', paddingRight: 3 },
-  colDiscount: { width: '8%', textAlign: 'right', overflow: 'hidden', paddingRight: 3 },
+  // 10% fits a five-digit amount ("₱50,000.00") -- at 8% a repaint job total ran into its discount.
+  colGross: { width: '10%', textAlign: 'right', overflow: 'hidden', paddingRight: 3 },
+  colDiscount: { width: '10%', textAlign: 'right', overflow: 'hidden', paddingRight: 3 },
   colCommission: { width: '10%', textAlign: 'right', overflow: 'hidden' },
+  // Discounted jobs table -- its own column set, sized to add up to 100% like the one above.
+  discountedTitle: { fontSize: 10, fontWeight: 'bold', marginTop: 22, marginBottom: 6 },
+  discountedNote: { fontSize: 7, color: '#444', marginBottom: 6 },
+  dColJob: { width: '6%', overflow: 'hidden', paddingRight: 3 },
+  dColPlate: { width: '9%', overflow: 'hidden', paddingRight: 3 },
+  dColDate: { width: '9%', overflow: 'hidden', paddingRight: 3 },
+  dColDetail: { width: '28%', overflow: 'hidden', paddingRight: 3 },
+  dColMoney: { width: '12%', textAlign: 'right', overflow: 'hidden', paddingRight: 3 },
+  dColLast: { width: '12%', textAlign: 'right', overflow: 'hidden' },
   totalRow: { flexDirection: 'row', paddingTop: 6, borderTopWidth: 1, borderTopColor: '#000', marginTop: 4 },
   logo: { height: 40, maxWidth: 160, objectFit: 'contain', alignSelf: 'center', marginBottom: 6 },
 })
@@ -112,6 +106,7 @@ function dashOr(value: number) {
 
 export function PayslipPdfDocument(d: PayslipPdfData) {
   const grossPay = d.basePay + d.commissionTotal + d.tips + d.bonus
+  const discountedJobs = (d.commissionJobs ?? []).filter((j) => (j.discountAmount ?? 0) > 0)
   const totalDeductions =
     d.cashAdvanceTotal +
     d.otherDeductionsTotal +
@@ -277,6 +272,60 @@ export function PayslipPdfDocument(d: PayslipPdfData) {
                 {formatMoney(d.commissionJobs.reduce((sum, j) => sum + j.commissionAmount, 0))}
               </Text>
             </View>
+
+            {discountedJobs.length > 0 && (
+              <View>
+                <Text style={styles.discountedTitle} minPresenceAhead={60}>
+                  DISCOUNTED JOBS
+                </Text>
+                <Text style={styles.discountedNote}>
+                  A discount given at checkout reduces commission in proportion to the discount. A service given for free
+                  (freebie) keeps its full commission.
+                </Text>
+                <View style={styles.tableHeaderRow}>
+                  <Text style={styles.dColJob}>Job #</Text>
+                  <Text style={styles.dColPlate}>Plate</Text>
+                  <Text style={styles.dColDate}>Date</Text>
+                  <Text style={styles.dColDetail}>Discounted</Text>
+                  <Text style={styles.dColMoney}>Discount</Text>
+                  <Text style={styles.dColMoney}>Commission before</Text>
+                  <Text style={styles.dColMoney}>Less discount</Text>
+                  <Text style={styles.dColLast}>Commission</Text>
+                </View>
+                {discountedJobs.map((job, i) => (
+                  <View key={i} style={styles.tableRow}>
+                    <Text style={styles.dColJob}>#{job.jobNumber.slice(-4)}</Text>
+                    <Text style={styles.dColPlate}>{job.plateNumber ?? '-'}</Text>
+                    <Text style={styles.dColDate}>{job.date}</Text>
+                    <Text style={styles.dColDetail}>{job.discountDetail || '-'}</Text>
+                    <Text style={styles.dColMoney}>{formatMoney(job.discountAmount ?? 0)}</Text>
+                    <Text style={styles.dColMoney}>{formatMoney(job.commissionBeforeDiscount ?? job.commissionAmount)}</Text>
+                    <Text style={styles.dColMoney}>
+                      {job.discountCommissionCut ? `-${formatMoney(job.discountCommissionCut)}` : job.hasFreebie ? 'Freebie' : '-'}
+                    </Text>
+                    <Text style={styles.dColLast}>{formatMoney(job.commissionAmount)}</Text>
+                  </View>
+                ))}
+                <View style={styles.totalRow}>
+                  <Text style={[styles.dColJob, styles.bold]}>Total</Text>
+                  <Text style={styles.dColPlate} />
+                  <Text style={styles.dColDate} />
+                  <Text style={styles.dColDetail} />
+                  <Text style={[styles.dColMoney, styles.bold]}>
+                    {formatMoney(discountedJobs.reduce((s, j) => s + (j.discountAmount ?? 0), 0))}
+                  </Text>
+                  <Text style={[styles.dColMoney, styles.bold]}>
+                    {formatMoney(discountedJobs.reduce((s, j) => s + (j.commissionBeforeDiscount ?? j.commissionAmount), 0))}
+                  </Text>
+                  <Text style={[styles.dColMoney, styles.bold]}>
+                    -{formatMoney(discountedJobs.reduce((s, j) => s + (j.discountCommissionCut ?? 0), 0))}
+                  </Text>
+                  <Text style={[styles.dColLast, styles.bold]}>
+                    {formatMoney(discountedJobs.reduce((s, j) => s + j.commissionAmount, 0))}
+                  </Text>
+                </View>
+              </View>
+            )}
           </View>
         </Page>
       )}

@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase/client'
+import { formatMoney } from '@/lib/money'
 
 export interface CommissionRateJob {
   jobId: string
@@ -19,9 +20,23 @@ export interface PayrollJobBreakdownRow {
   jobServiceNames: string
   rate: number
   grossAmount: number
+  // Every discount given on what this row covers: per-line discounts set at job creation, per-line
+  // discounts at Collect Payment, and this row's share of a sale-wide discount (percent/amount off,
+  // promotion, loyalty) -- plus a membership stamp-card redemption, which zeroes one line.
   discountAmount: number
+  // Which services were discounted and how, e.g. "Acid Rain Removal (â‚±200.00 off)", "Premium Carwash (free)".
+  discountDetail: string
+  // A freebie is a line discounted all the way to zero: it keeps its full commission (0090).
+  hasFreebie: boolean
+  // commissionAmount = commissionBeforeDiscount - discountCommissionCut
+  commissionBeforeDiscount: number
+  discountCommissionCut: number
   commissionAmount: number
 }
+
+// adjustment_reason apply_discount_commission_adjustment() (0090/0094) stamps on the negative
+// ledger rows it inserts when a checkout discount shrinks commission.
+const CHECKOUT_DISCOUNT_REASON = 'Checkout discount (excluding freebies)'
 
 // Per-employee, per-payroll-period job breakdown -- commission_ledger rows get stamped with
 // payroll_period_id once claimed (generate_payroll_period()/recompute_job_commission()), so this
@@ -49,7 +64,7 @@ export async function getPayrollEntryJobBreakdown(payrollPeriodId: string, emplo
     // so the payslip breakdown can show everything that was done on that job, for context. Also
     // carries discount_amount so the breakdown can show how much was discounted off that job.
     jobIds.length
-      ? supabase.from('job_services').select('id, job_id, service_id, discount_amount').in('job_id', jobIds)
+      ? supabase.from('job_services').select('id, job_id, service_id, discount_amount, line_total').in('job_id', jobIds)
       : Promise.resolve({ data: [] }),
   ])
 
@@ -57,13 +72,29 @@ export async function getPayrollEntryJobBreakdown(payrollPeriodId: string, emplo
   const vehicleSizeIds = [...new Set((jobs ?? []).map((j) => j.vehicle_size_id).filter((id): id is string => !!id))]
   const allServiceIds = [...new Set((jobServices ?? []).map((js) => js.service_id))]
 
-  const [{ data: vehicles }, { data: vehicleSizes }, { data: allServices }] = await Promise.all([
+  const [{ data: vehicles }, { data: vehicleSizes }, { data: allServices }, { data: sales }] = await Promise.all([
     vehicleIds.length ? supabase.from('vehicles').select('id, plate_number').in('id', vehicleIds) : Promise.resolve({ data: [] }),
     vehicleSizeIds.length
       ? supabase.from('vehicle_sizes').select('id, name').in('id', vehicleSizeIds)
       : Promise.resolve({ data: [] }),
     allServiceIds.length ? supabase.from('services').select('id, name').in('id', allServiceIds) : Promise.resolve({ data: [] }),
+    // Checkout discounts live on the sale, not on job_services -- same one-non-voided-sale-per-job
+    // assumption apply_discount_commission_adjustment() makes.
+    jobIds.length
+      ? supabase
+          .from('sales')
+          .select(
+            'id, job_id, manual_discount_amount, promotion_discount_amount, loyalty_discount_amount, membership_discount_amount, membership_redeemed_job_service_id',
+          )
+          .in('job_id', jobIds)
+          .neq('status', 'voided')
+      : Promise.resolve({ data: [] }),
   ])
+
+  const saleIds = (sales ?? []).map((s) => s.id)
+  const { data: saleItems } = saleIds.length
+    ? await supabase.from('sale_items').select('sale_id, job_service_id, discount_amount, line_total').in('sale_id', saleIds)
+    : { data: [] }
 
   const jobNumberById = new Map((jobs ?? []).map((j) => [j.id, j.job_number]))
   const vehicleIdByJobId = new Map((jobs ?? []).map((j) => [j.id, j.vehicle_id]))
@@ -74,15 +105,53 @@ export async function getPayrollEntryJobBreakdown(payrollPeriodId: string, emplo
   const allServiceNameById = new Map((allServices ?? []).map((s) => [s.id, s.name]))
 
   const serviceNamesByJobId = new Map<string, string[]>()
-  const discountByJobId = new Map<string, number>()
-  const discountByJobServiceId = new Map<string, number>()
   for (const js of jobServices ?? []) {
     const name = allServiceNameById.get(js.service_id) ?? 'Unknown service'
     const list = serviceNamesByJobId.get(js.job_id) ?? []
     list.push(name)
     serviceNamesByJobId.set(js.job_id, list)
-    discountByJobId.set(js.job_id, (discountByJobId.get(js.job_id) ?? 0) + js.discount_amount)
-    discountByJobServiceId.set(js.id, js.discount_amount)
+  }
+
+  // Per job_service line: total discount and whether it's a freebie. The sale-wide pool (manual +
+  // promotion + loyalty) is shared across the sale's non-freebie service lines in proportion to
+  // their billed value, the same apportioning apply_discount_commission_adjustment() uses.
+  const saleByJobId = new Map((sales ?? []).map((s) => [s.job_id, s]))
+  const saleItemByJobServiceId = new Map(
+    (saleItems ?? []).filter((si) => si.job_service_id).map((si) => [si.job_service_id as string, si]),
+  )
+  const jobServiceById = new Map((jobServices ?? []).map((js) => [js.id, js]))
+  const isFreebieLine = (jsId: string) => {
+    const js = jobServiceById.get(jsId)
+    const si = saleItemByJobServiceId.get(jsId)
+    if (!js) return false
+    const sale = saleByJobId.get(js.job_id)
+    return (!!si && si.discount_amount >= js.line_total && js.line_total > 0) || sale?.membership_redeemed_job_service_id === jsId
+  }
+  const eligibleBaseBySaleId = new Map<string, number>()
+  for (const si of saleItems ?? []) {
+    if (!si.job_service_id || isFreebieLine(si.job_service_id)) continue
+    eligibleBaseBySaleId.set(si.sale_id, (eligibleBaseBySaleId.get(si.sale_id) ?? 0) + si.line_total)
+  }
+  const lineDiscount = new Map<string, { amount: number; freebie: boolean }>()
+  for (const js of jobServices ?? []) {
+    const sale = saleByJobId.get(js.job_id)
+    const si = saleItemByJobServiceId.get(js.id)
+    const freebie = isFreebieLine(js.id)
+    let amount = js.discount_amount + (si?.discount_amount ?? 0)
+    if (sale && si && !freebie) {
+      const pool = sale.manual_discount_amount + sale.promotion_discount_amount + sale.loyalty_discount_amount
+      const base = eligibleBaseBySaleId.get(sale.id) ?? 0
+      if (pool > 0 && base > 0) amount += Math.round(((pool * si.line_total) / base) * 100) / 100
+    }
+    if (sale?.membership_redeemed_job_service_id === js.id) amount += sale.membership_discount_amount ?? 0
+    lineDiscount.set(js.id, { amount, freebie })
+  }
+  const describeLine = (jsId: string) => {
+    const js = jobServiceById.get(jsId)
+    const d = lineDiscount.get(jsId)
+    if (!js || !d || d.amount <= 0) return null
+    const name = allServiceNameById.get(js.service_id) ?? 'Unknown service'
+    return d.freebie ? `${name} (free)` : `${name} (${formatMoney(d.amount)} off)`
   }
 
   const byKey = new Map<
@@ -93,12 +162,14 @@ export async function getPayrollEntryJobBreakdown(payrollPeriodId: string, emplo
       serviceId: string | null
       rate: number
       netAmount: number
+      discountCut: number
       grossAmount: number
       lastCreatedAt: string
     }
   >()
   for (const entry of entries ?? []) {
     const key = `${entry.job_service_id ?? entry.job_id}:${entry.commission_rate}`
+    const cut = entry.adjustment_reason === CHECKOUT_DISCOUNT_REASON ? -entry.commission_amount : 0
     const existing = byKey.get(key)
     if (!existing) {
       byKey.set(key, {
@@ -107,11 +178,13 @@ export async function getPayrollEntryJobBreakdown(payrollPeriodId: string, emplo
         serviceId: entry.service_id,
         rate: entry.commission_rate,
         netAmount: entry.commission_amount,
+        discountCut: cut,
         grossAmount: entry.gross_service_amount,
         lastCreatedAt: entry.created_at,
       })
     } else {
       existing.netAmount += entry.commission_amount
+      existing.discountCut += cut
       if (entry.created_at > existing.lastCreatedAt) existing.lastCreatedAt = entry.created_at
     }
   }
@@ -119,11 +192,13 @@ export async function getPayrollEntryJobBreakdown(payrollPeriodId: string, emplo
   const rows: PayrollJobBreakdownRow[] = []
   for (const row of byKey.values()) {
     if (Math.abs(row.netAmount) < 0.005) continue
-    // Job-level row (whole job) -- sum every line's discount on that job. Service-level row --
-    // just that one line's discount, not the whole job's.
-    const discountAmount = row.jobServiceId
-      ? (discountByJobServiceId.get(row.jobServiceId) ?? 0)
-      : (discountByJobId.get(row.jobId) ?? 0)
+    // Job-level row (whole job) -- every line's discount on that job. Service-level row -- just
+    // that one line's discount, not the whole job's.
+    const lineIds = row.jobServiceId
+      ? [row.jobServiceId]
+      : (jobServices ?? []).filter((js) => js.job_id === row.jobId).map((js) => js.id)
+    const discountAmount = lineIds.reduce((sum, id) => sum + (lineDiscount.get(id)?.amount ?? 0), 0)
+    const discountCommissionCut = Math.round(row.discountCut * 100) / 100
     rows.push({
       jobId: row.jobId,
       jobNumber: jobNumberById.get(row.jobId) ?? row.jobId.slice(0, 8),
@@ -135,6 +210,10 @@ export async function getPayrollEntryJobBreakdown(payrollPeriodId: string, emplo
       rate: row.rate,
       grossAmount: row.grossAmount,
       discountAmount,
+      discountDetail: lineIds.map(describeLine).filter(Boolean).join(', '),
+      hasFreebie: lineIds.some((id) => lineDiscount.get(id)?.freebie && (lineDiscount.get(id)?.amount ?? 0) > 0),
+      commissionBeforeDiscount: row.netAmount + discountCommissionCut,
+      discountCommissionCut,
       commissionAmount: row.netAmount,
     })
   }
