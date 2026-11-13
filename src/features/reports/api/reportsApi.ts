@@ -1,37 +1,34 @@
 import { supabase } from '@/lib/supabase/client'
 import { localDateString } from '@/lib/date'
 
-// Resolves whichever service_categories row is named "Repaint" for this tenant, and every service
-// under it -- shared by getSalesReport() (which excludes these lines) and getRepaintSalesReport()
-// (which totals only these lines). Returns an empty set for a tenant with no such category, which
-// is the common case: that makes every repaint-aware computation below a no-op for them, so this
-// never needs its own feature flag to stay invisible.
-async function getRepaintServiceIds(): Promise<Set<string>> {
-  const { data: category, error: catError } = await supabase
-    .from('service_categories')
-    .select('id')
-    .ilike('name', 'Repaint')
-    .limit(1)
-    .maybeSingle()
-  if (catError) throw catError
-  if (!category) return new Set()
+// Resolves every service under any of the given service_categories names for this tenant --
+// shared by getSalesReport() (which excludes these lines for whichever category groups are
+// enabled) and getCategoryGroupSalesReport() (which totals only one group's lines). Returns an
+// empty set for a tenant with none of these categories, which is the common case: that makes
+// every category-group computation below a no-op for them.
+async function getServiceIdsForCategoryNames(categoryNames: string[]): Promise<Set<string>> {
+  if (categoryNames.length === 0) return new Set()
 
-  const { data: categoryServices, error: servicesError } = await supabase
-    .from('services')
-    .select('id')
-    .eq('category_id', category.id)
+  const { data: categories, error: catError } = await supabase.from('service_categories').select('id').in('name', categoryNames)
+  if (catError) throw catError
+  const categoryIds = (categories ?? []).map((c) => c.id)
+  if (categoryIds.length === 0) return new Set()
+
+  const { data: categoryServices, error: servicesError } = await supabase.from('services').select('id').in('category_id', categoryIds)
   if (servicesError) throw servicesError
   return new Set((categoryServices ?? []).map((s) => s.id))
 }
 
-// Test123's "All sales" feeds a report they submit to their franchise owner, and repaint work
-// isn't part of that franchise deal -- so repaint revenue must be fully excluded here, not just
-// broken out separately (that's what the Repaint tab is for). A sale that mixes a repaint line
-// with an ordinary one (rare, but happens) has its sale-level fields -- manual discount, card fee,
-// promotion/loyalty/membership discount -- apportioned between repaint and non-repaint by each
+// Test123's "All sales" feeds a report they submit to their franchise owner, and repaint/tint-PPF
+// work isn't part of that franchise deal -- so that revenue must be fully excluded here, not just
+// broken out separately (that's what each category group's own tab is for -- see CATEGORY_GROUPS
+// in @/lib/features). `excludeCategoryNames` is the caller's currently-enabled groups' category
+// names; passing none makes this identical to a plain, ungated sales report. A sale that mixes an
+// excluded line with an ordinary one (rare, but happens) has its sale-level fields -- manual
+// discount, card fee, promotion/loyalty/membership discount -- apportioned between the two by each
 // side's share of that sale's line revenue, since those fields don't carry their own per-line
 // split. Per-line discounts need no apportioning; sale_items.discount_amount is already exact per line.
-export async function getSalesReport(fromIso: string, toIso: string) {
+export async function getSalesReport(fromIso: string, toIso: string, excludeCategoryNames: string[] = []) {
   const { data: sales, error } = await supabase.from('sales').select('*').gte('created_at', fromIso).lte('created_at', toIso)
   if (error) throw error
 
@@ -39,14 +36,14 @@ export async function getSalesReport(fromIso: string, toIso: string) {
   const voidedCount = (sales ?? []).filter((s) => s.status === 'voided').length
   const saleIds = completed.map((s) => s.id)
 
-  const [paymentsRes, itemsRes, repaintServiceIds] = await Promise.all([
+  const [paymentsRes, itemsRes, excludedServiceIds] = await Promise.all([
     saleIds.length
       ? supabase.from('payments').select('*').in('sale_id', saleIds)
       : Promise.resolve({ data: [], error: null }),
     saleIds.length
       ? supabase.from('sale_items').select('*').in('sale_id', saleIds)
       : Promise.resolve({ data: [], error: null }),
-    getRepaintServiceIds(),
+    getServiceIdsForCategoryNames(excludeCategoryNames),
   ])
   if (paymentsRes.error) throw paymentsRes.error
   if (itemsRes.error) throw itemsRes.error
@@ -59,10 +56,10 @@ export async function getSalesReport(fromIso: string, toIso: string) {
   if (jsError) throw jsError
   const serviceIdByJobServiceId = new Map((jobServices ?? []).map((js) => [js.id, js.service_id]))
 
-  function isRepaintItem(item: (typeof items)[number]) {
+  function isExcludedItem(item: (typeof items)[number]) {
     if (item.line_type !== 'job_service' || !item.job_service_id) return false
     const serviceId = serviceIdByJobServiceId.get(item.job_service_id)
-    return !!serviceId && repaintServiceIds.has(serviceId)
+    return !!serviceId && excludedServiceIds.has(serviceId)
   }
 
   const itemsBySale = new Map<string, typeof items>()
@@ -79,19 +76,19 @@ export async function getSalesReport(fromIso: string, toIso: string) {
   let discountTotal = 0
   let promotionDiscountTotal = 0
   let cardProcessingFeeTotal = 0
-  // sale id -> the fraction of that sale's line revenue that is NOT repaint, used again below to
+  // sale id -> the fraction of that sale's line revenue that is NOT excluded, used again below to
   // apportion each of its payments the same way when building the by-method breakdown.
-  const nonRepaintFractionBySale = new Map<string, number>()
+  const includedFractionBySale = new Map<string, number>()
 
   for (const sale of completed) {
     const saleItems = itemsBySale.get(sale.id) ?? []
     const saleItemsTotal = saleItems.reduce((sum, i) => sum + i.line_total, 0)
-    const nonRepaintItems = saleItems.filter((i) => !isRepaintItem(i))
-    const nonRepaintItemsTotal = nonRepaintItems.reduce((sum, i) => sum + i.line_total, 0)
-    const fraction = saleItemsTotal > 0 ? nonRepaintItemsTotal / saleItemsTotal : 1
-    nonRepaintFractionBySale.set(sale.id, fraction)
+    const includedItems = saleItems.filter((i) => !isExcludedItem(i))
+    const includedItemsTotal = includedItems.reduce((sum, i) => sum + i.line_total, 0)
+    const fraction = saleItemsTotal > 0 ? includedItemsTotal / saleItemsTotal : 1
+    includedFractionBySale.set(sale.id, fraction)
 
-    for (const item of nonRepaintItems) {
+    for (const item of includedItems) {
       if (item.line_type === 'job_service') {
         serviceRevenue += item.line_total
         const bucket = byService.get(item.description) ?? { count: 0, total: 0 }
@@ -103,21 +100,21 @@ export async function getSalesReport(fromIso: string, toIso: string) {
       }
     }
 
-    const nonRepaintCardFee = sale.card_processing_fee * fraction
-    const nonRepaintSaleLevelDiscount =
+    const includedCardFee = sale.card_processing_fee * fraction
+    const includedSaleLevelDiscount =
       (sale.manual_discount_amount + sale.promotion_discount_amount + sale.loyalty_discount_amount + sale.membership_discount_amount) * fraction
 
     // Net of the card processing fee -- the fee is a real cost the business absorbs, so it reduces
     // what counts as sales here too, not just Net.
-    grossSales += nonRepaintItemsTotal - nonRepaintSaleLevelDiscount - nonRepaintCardFee
-    discountTotal += nonRepaintItems.reduce((sum, i) => sum + i.discount_amount, 0) + sale.manual_discount_amount * fraction
+    grossSales += includedItemsTotal - includedSaleLevelDiscount - includedCardFee
+    discountTotal += includedItems.reduce((sum, i) => sum + i.discount_amount, 0) + sale.manual_discount_amount * fraction
     promotionDiscountTotal += sale.promotion_discount_amount * fraction
-    cardProcessingFeeTotal += nonRepaintCardFee
+    cardProcessingFeeTotal += includedCardFee
   }
 
   const byMethod = new Map<string, number>()
   for (const p of paymentsRes.data ?? []) {
-    const fraction = nonRepaintFractionBySale.get(p.sale_id) ?? 1
+    const fraction = includedFractionBySale.get(p.sale_id) ?? 1
     byMethod.set(p.method, (byMethod.get(p.method) ?? 0) + p.amount * fraction)
   }
 
@@ -137,7 +134,7 @@ export async function getSalesReport(fromIso: string, toIso: string) {
   }
 }
 
-const EMPTY_REPAINT_REPORT = {
+const EMPTY_CATEGORY_GROUP_REPORT = {
   totalRevenue: 0,
   discountTotal: 0,
   promotionDiscountTotal: 0,
@@ -157,21 +154,22 @@ const EMPTY_REPAINT_REPORT = {
   }[],
 }
 
-// Scoped to whichever service_categories row is named "Repaint" for this tenant -- repaint is a
-// non-carwash service line sold alongside regular car wash jobs, so owners want its own full
-// report (gross/expenses/net, payment mix, discounts, card fees), not just a line-item total
-// buried inside "Services". The business submits "All sales" to their franchise owner and repaint
+// Scoped to one named service_categories group (see CATEGORY_GROUPS in @/lib/features) -- a
+// business-specific line sold alongside regular car wash jobs, so owners want its own full report
+// (gross/expenses/net, payment mix, discounts, card fees), not just a line-item total buried
+// inside "Services". The business submits "All sales" to their franchise owner and this group
 // isn't part of that deal, so the two reports must be a clean, non-overlapping partition -- every
-// peso here is excluded from getSalesReport() above, and vice versa. A sale that mixes a repaint
-// line with an ordinary one (rare, but happens) has its sale-level fields -- manual discount, card
-// fee, promotion/loyalty/membership discount, and each payment -- apportioned by this sale's share
-// of repaint line revenue, the exact mirror of how getSalesReport() apportions the non-repaint
+// peso here is excluded from getSalesReport() above (when this group is passed in its
+// excludeCategoryNames), and vice versa. A sale that mixes this group's line with an ordinary one
+// (rare, but happens) has its sale-level fields -- manual discount, card fee,
+// promotion/loyalty/membership discount, and each payment -- apportioned by this sale's share of
+// this group's line revenue, the exact mirror of how getSalesReport() apportions the excluded
 // share. Per-line discounts need no apportioning; sale_items.discount_amount is already exact.
-export async function getRepaintSalesReport(fromIso: string, toIso: string) {
+export async function getCategoryGroupSalesReport(fromIso: string, toIso: string, categoryName: string) {
   const { data: category, error: catError } = await supabase
     .from('service_categories')
     .select('id, name')
-    .ilike('name', 'Repaint')
+    .eq('name', categoryName)
     .limit(1)
     .maybeSingle()
   if (catError) throw catError
@@ -187,7 +185,7 @@ export async function getRepaintSalesReport(fromIso: string, toIso: string) {
   const categoryServiceIds = (categoryServices ?? []).map((s) => s.id)
 
   if (categoryServiceIds.length === 0) {
-    return { categoryFound: true as const, categoryName: category.name, ...EMPTY_REPAINT_REPORT }
+    return { categoryFound: true as const, categoryName: category.name, ...EMPTY_CATEGORY_GROUP_REPORT }
   }
 
   const { data: jobServicesAll, error: jobServicesError } = await supabase
@@ -195,11 +193,11 @@ export async function getRepaintSalesReport(fromIso: string, toIso: string) {
     .select('id, job_id, service_id')
     .in('service_id', categoryServiceIds)
   if (jobServicesError) throw jobServicesError
-  const repaintJobServiceIds = new Set((jobServicesAll ?? []).map((js) => js.id))
+  const groupJobServiceIds = new Set((jobServicesAll ?? []).map((js) => js.id))
   const jobIdByJobServiceId = new Map((jobServicesAll ?? []).map((js) => [js.id, js.job_id]))
 
-  if (repaintJobServiceIds.size === 0) {
-    return { categoryFound: true as const, categoryName: category.name, ...EMPTY_REPAINT_REPORT }
+  if (groupJobServiceIds.size === 0) {
+    return { categoryFound: true as const, categoryName: category.name, ...EMPTY_CATEGORY_GROUP_REPORT }
   }
 
   const { data: sales, error: salesError } = await supabase
@@ -213,7 +211,7 @@ export async function getRepaintSalesReport(fromIso: string, toIso: string) {
   const saleById = new Map((sales ?? []).map((s) => [s.id, s]))
 
   if (saleIds.length === 0) {
-    return { categoryFound: true as const, categoryName: category.name, ...EMPTY_REPAINT_REPORT }
+    return { categoryFound: true as const, categoryName: category.name, ...EMPTY_CATEGORY_GROUP_REPORT }
   }
 
   const [itemsRes, paymentsRes] = await Promise.all([
@@ -224,8 +222,8 @@ export async function getRepaintSalesReport(fromIso: string, toIso: string) {
   if (paymentsRes.error) throw paymentsRes.error
   const items = itemsRes.data ?? []
 
-  function isRepaintItem(item: (typeof items)[number]) {
-    return item.line_type === 'job_service' && !!item.job_service_id && repaintJobServiceIds.has(item.job_service_id)
+  function isGroupItem(item: (typeof items)[number]) {
+    return item.line_type === 'job_service' && !!item.job_service_id && groupJobServiceIds.has(item.job_service_id)
   }
 
   const itemsBySale = new Map<string, typeof items>()
@@ -241,21 +239,21 @@ export async function getRepaintSalesReport(fromIso: string, toIso: string) {
   let discountTotal = 0
   let promotionDiscountTotal = 0
   let cardProcessingFeeTotal = 0
-  // sale id -> the fraction of that sale's line revenue that IS repaint, reused below to
+  // sale id -> the fraction of that sale's line revenue that IS this group, reused below to
   // apportion each of that sale's payments the same way when building the by-method breakdown.
-  const repaintFractionBySale = new Map<string, number>()
+  const groupFractionBySale = new Map<string, number>()
 
   for (const sale of sales ?? []) {
     const saleItems = itemsBySale.get(sale.id) ?? []
-    const repaintItems = saleItems.filter((i) => isRepaintItem(i))
-    if (repaintItems.length === 0) continue
+    const groupItems = saleItems.filter((i) => isGroupItem(i))
+    if (groupItems.length === 0) continue
 
     const saleItemsTotal = saleItems.reduce((sum, i) => sum + i.line_total, 0)
-    const repaintItemsTotal = repaintItems.reduce((sum, i) => sum + i.line_total, 0)
-    const fraction = saleItemsTotal > 0 ? repaintItemsTotal / saleItemsTotal : 0
-    repaintFractionBySale.set(sale.id, fraction)
+    const groupItemsTotal = groupItems.reduce((sum, i) => sum + i.line_total, 0)
+    const fraction = saleItemsTotal > 0 ? groupItemsTotal / saleItemsTotal : 0
+    groupFractionBySale.set(sale.id, fraction)
 
-    for (const item of repaintItems) {
+    for (const item of groupItems) {
       matched.push(item)
       const bucket = byService.get(item.description) ?? { count: 0, total: 0 }
       bucket.count += 1
@@ -263,24 +261,24 @@ export async function getRepaintSalesReport(fromIso: string, toIso: string) {
       byService.set(item.description, bucket)
     }
 
-    const repaintCardFee = sale.card_processing_fee * fraction
-    const repaintSaleLevelDiscount =
+    const groupCardFee = sale.card_processing_fee * fraction
+    const groupSaleLevelDiscount =
       (sale.manual_discount_amount + sale.promotion_discount_amount + sale.loyalty_discount_amount + sale.membership_discount_amount) * fraction
 
     // Net of the card processing fee, same definition getSalesReport() uses for its own Gross.
-    totalRevenue += repaintItemsTotal - repaintSaleLevelDiscount - repaintCardFee
-    discountTotal += repaintItems.reduce((sum, i) => sum + i.discount_amount, 0) + sale.manual_discount_amount * fraction
+    totalRevenue += groupItemsTotal - groupSaleLevelDiscount - groupCardFee
+    discountTotal += groupItems.reduce((sum, i) => sum + i.discount_amount, 0) + sale.manual_discount_amount * fraction
     promotionDiscountTotal += sale.promotion_discount_amount * fraction
-    cardProcessingFeeTotal += repaintCardFee
+    cardProcessingFeeTotal += groupCardFee
   }
 
   if (matched.length === 0) {
-    return { categoryFound: true as const, categoryName: category.name, ...EMPTY_REPAINT_REPORT }
+    return { categoryFound: true as const, categoryName: category.name, ...EMPTY_CATEGORY_GROUP_REPORT }
   }
 
   const byMethod = new Map<string, number>()
   for (const p of paymentsRes.data ?? []) {
-    const fraction = repaintFractionBySale.get(p.sale_id)
+    const fraction = groupFractionBySale.get(p.sale_id)
     if (!fraction) continue
     byMethod.set(p.method, (byMethod.get(p.method) ?? 0) + p.amount * fraction)
   }

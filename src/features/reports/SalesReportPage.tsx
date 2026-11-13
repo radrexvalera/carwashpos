@@ -10,10 +10,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DateRangePresets } from '@/components/DateRangePresets'
 import { formatMoney } from '@/lib/money'
 import { localDateString } from '@/lib/date'
-import { hasFeature } from '@/lib/features'
+import { enabledCategoryGroups, type CategoryGroup } from '@/lib/features'
 import { useTenant } from '@/app/TenantProvider'
 import { getSettings } from '@/features/settings/api/settingsApi'
-import { getCashAdvancesSummary, getExpensesByCategory, getRepaintSalesReport, getSalesReport } from './api/reportsApi'
+import { getCashAdvancesSummary, getCategoryGroupSalesReport, getExpensesByCategory, getSalesReport } from './api/reportsApi'
 
 const METHOD_LABELS: Record<string, string> = {
   cash: 'Cash',
@@ -29,15 +29,37 @@ const METHOD_LABELS: Record<string, string> = {
   qrph: 'QR Ph',
 }
 
+type SalesReportData = Awaited<ReturnType<typeof getSalesReport>>
+type ExpensesData = Awaited<ReturnType<typeof getExpensesByCategory>>
+type CashAdvancesData = Awaited<ReturnType<typeof getCashAdvancesSummary>>
+type CategoryGroupReport = Awaited<ReturnType<typeof getCategoryGroupSalesReport>>
+type ExpenseCategoryRow = ExpensesData['byCategory'][number]
+
+function csvCell(value: string | number) {
+  const str = String(value)
+  return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str
+}
+
+function downloadCsv(filename: string, rows: string[][]) {
+  const csv = rows.map((row) => row.map(csvCell).join(',')).join('\n')
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 export function SalesReportPage() {
   const { profile } = useTenant()
   const [from, setFrom] = useState(localDateString())
   const [to, setTo] = useState(localDateString())
-  const [sales, setSales] = useState<Awaited<ReturnType<typeof getSalesReport>> | null>(null)
-  const [expenses, setExpenses] = useState<Awaited<ReturnType<typeof getExpensesByCategory>> | null>(null)
-  const [cashAdvances, setCashAdvances] = useState<Awaited<ReturnType<typeof getCashAdvancesSummary>> | null>(null)
-  const [repaint, setRepaint] = useState<Awaited<ReturnType<typeof getRepaintSalesReport>> | null>(null)
-  const [repaintEnabled, setRepaintEnabled] = useState(false)
+  const [sales, setSales] = useState<SalesReportData | null>(null)
+  const [expenses, setExpenses] = useState<ExpensesData | null>(null)
+  const [cashAdvances, setCashAdvances] = useState<CashAdvancesData | null>(null)
+  const [groups, setGroups] = useState<CategoryGroup[]>([])
+  const [groupReports, setGroupReports] = useState<Record<string, CategoryGroupReport>>({})
   const [loading, setLoading] = useState(true)
 
   async function load(f: string = from, t: string = to) {
@@ -46,18 +68,23 @@ export function SalesReportPage() {
       const fromIso = new Date(`${f}T00:00:00`).toISOString()
       const toIso = new Date(`${t}T23:59:59`).toISOString()
       const settings = profile ? await getSettings(profile.tenantId) : null
-      const repaintOn = hasFeature(settings?.features, 'repaint')
-      setRepaintEnabled(repaintOn)
-      const [salesData, expensesData, cashAdvancesData, repaintData] = await Promise.all([
-        getSalesReport(fromIso, toIso),
+      const enabledGroups = enabledCategoryGroups(settings?.features)
+      setGroups(enabledGroups)
+
+      const [salesData, expensesData, cashAdvancesData, groupReportList] = await Promise.all([
+        getSalesReport(
+          fromIso,
+          toIso,
+          enabledGroups.map((g) => g.categoryName),
+        ),
         getExpensesByCategory(f, t),
         getCashAdvancesSummary(f, t),
-        repaintOn ? getRepaintSalesReport(fromIso, toIso) : Promise.resolve(null),
+        Promise.all(enabledGroups.map((g) => getCategoryGroupSalesReport(fromIso, toIso, g.categoryName))),
       ])
       setSales(salesData)
       setExpenses(expensesData)
       setCashAdvances(cashAdvancesData)
-      setRepaint(repaintData)
+      setGroupReports(Object.fromEntries(enabledGroups.map((g, i) => [g.key, groupReportList[i]])))
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to load report')
     } finally {
@@ -76,25 +103,27 @@ export function SalesReportPage() {
     load(range.from, range.to)
   }
 
-  // Same loose name match ExpensesPage's own Repaint tab uses for its expense category, so all
-  // three places agree on what counts as a "repaint expense". All sales and Repaint must be a
-  // clean partition of expenses too, not just revenue -- a repaint-categorized expense (including
-  // a repaint purchase order, which posts here as an expense) belongs ONLY in the Repaint tab's
-  // numbers, never in All Sales'.
-  const nonRepaintExpenseCategories = expenses?.byCategory.filter((c) => !/repaint/i.test(c.name)) ?? []
-  const repaintExpenseCategories = expenses?.byCategory.filter((c) => /repaint/i.test(c.name)) ?? []
-  const nonRepaintExpenseTotal = nonRepaintExpenseCategories.reduce((sum, c) => sum + c.total, 0)
-  const repaintExpenseTotal = repaintExpenseCategories.reduce((sum, c) => sum + c.total, 0)
+  // All sales and every enabled category group's tab must be a clean partition of expenses too,
+  // not just revenue -- a group-categorized expense (including a purchase order posted under that
+  // category) belongs ONLY in that group's own numbers, never in All Sales'.
+  const trackedExpenseCategories = expenses?.byCategory.filter((c) => groups.some((g) => g.expenseNamePattern.test(c.name))) ?? []
+  const nonTrackedExpenseCategories = expenses?.byCategory.filter((c) => !groups.some((g) => g.expenseNamePattern.test(c.name))) ?? []
+  const nonTrackedExpenseTotal = nonTrackedExpenseCategories.reduce((sum, c) => sum + c.total, 0)
+
+  function expenseCategoriesFor(group: CategoryGroup): ExpenseCategoryRow[] {
+    return trackedExpenseCategories.filter((c) => group.expenseNamePattern.test(c.name))
+  }
 
   // grossSales is already net of the card processing fee, so it's not subtracted again here.
   // Commission isn't subtracted separately either -- once a payroll period is marked paid, it's
   // recorded as a real expense (category: Commission Payouts), already counted in expenses.total.
-  const net = sales ? sales.grossSales - nonRepaintExpenseTotal : 0
-  const repaintNet = (repaint && repaint.categoryFound ? repaint.totalRevenue : 0) - repaintExpenseTotal
+  const net = sales ? sales.grossSales - nonTrackedExpenseTotal : 0
 
-  function csvCell(value: string | number) {
-    const str = String(value)
-    return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str
+  function netFor(group: CategoryGroup) {
+    const report = groupReports[group.key]
+    const revenue = report && report.categoryFound ? report.totalRevenue : 0
+    const expenseTotal = expenseCategoriesFor(group).reduce((sum, c) => sum + c.total, 0)
+    return revenue - expenseTotal
   }
 
   function exportSalesCsv() {
@@ -107,7 +136,7 @@ export function SalesReportPage() {
       ['Gross sales', sales.grossSales.toFixed(2)],
       ['Sale count', String(sales.saleCount)],
       ['Voided sales', String(sales.voidedCount)],
-      ['Expenses', nonRepaintExpenseTotal.toFixed(2)],
+      ['Expenses', nonTrackedExpenseTotal.toFixed(2)],
       ['Card processing fees', sales.cardProcessingFeeTotal.toFixed(2)],
       ['Net', net.toFixed(2)],
       ['Discounts given', sales.discountTotal.toFixed(2)],
@@ -126,53 +155,48 @@ export function SalesReportPage() {
       [],
       ['Expenses by category'],
       ['Category', 'Total'],
-      ...nonRepaintExpenseCategories.map((c) => [c.name, c.total.toFixed(2)]),
+      ...nonTrackedExpenseCategories.map((c) => [c.name, c.total.toFixed(2)]),
       [],
       ['Cash advances by employee'],
       ['Employee', 'Total'],
       ...cashAdvances.byEmployee.map((e) => [e.name, e.total.toFixed(2)]),
     ]
-    const csv = rows.map((row) => row.map(csvCell).join(',')).join('\n')
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `Sales Report ${from} to ${to}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
+    downloadCsv(`Sales Report ${from} to ${to}.csv`, rows)
   }
 
-  function exportRepaintCsv() {
-    if (!repaint || !repaint.categoryFound) return
+  function exportGroupCsv(group: CategoryGroup) {
+    const report = groupReports[group.key]
+    if (!report || !report.categoryFound) return
+    const expenseCategories = expenseCategoriesFor(group)
     const rows: string[][] = [
-      ['Repaint Sales Report', `${from} to ${to}`],
+      [`${group.label} Sales Report`, `${from} to ${to}`],
       [],
       ['Summary'],
       ['Metric', 'Value'],
-      ['Gross', repaint.totalRevenue.toFixed(2)],
-      ['Expenses', repaintExpenseTotal.toFixed(2)],
-      ['Net', repaintNet.toFixed(2)],
-      ['Card processing fees', repaint.cardProcessingFeeTotal.toFixed(2)],
-      ['Discounts given', repaint.discountTotal.toFixed(2)],
-      ['Promotions given', repaint.promotionDiscountTotal.toFixed(2)],
-      ['Line items', String(repaint.lineCount)],
-      ['Jobs', String(repaint.jobCount)],
+      ['Gross', report.totalRevenue.toFixed(2)],
+      ['Expenses', expenseCategories.reduce((sum, c) => sum + c.total, 0).toFixed(2)],
+      ['Net', netFor(group).toFixed(2)],
+      ['Card processing fees', report.cardProcessingFeeTotal.toFixed(2)],
+      ['Discounts given', report.discountTotal.toFixed(2)],
+      ['Promotions given', report.promotionDiscountTotal.toFixed(2)],
+      ['Line items', String(report.lineCount)],
+      ['Jobs', String(report.jobCount)],
       [],
       ['Revenue by payment method'],
       ['Method', 'Total'],
-      ...repaint.byMethod.map((m) => [METHOD_LABELS[m.method] ?? m.method, m.total.toFixed(2)]),
+      ...report.byMethod.map((m) => [METHOD_LABELS[m.method] ?? m.method, m.total.toFixed(2)]),
       [],
       ['By service'],
       ['Service', 'Count', 'Total'],
-      ...repaint.byService.map((s) => [s.name, String(s.count), s.total.toFixed(2)]),
+      ...report.byService.map((s) => [s.name, String(s.count), s.total.toFixed(2)]),
       [],
       ['Expenses by category'],
       ['Category', 'Total'],
-      ...repaintExpenseCategories.map((c) => [c.name, c.total.toFixed(2)]),
+      ...expenseCategories.map((c) => [c.name, c.total.toFixed(2)]),
       [],
       ['Transactions'],
       ['Date', 'Sale #', 'Job #', 'Plate', 'Service', 'Amount', 'Discount'],
-      ...repaint.rows.map((r) => [
+      ...report.rows.map((r) => [
         new Date(r.date).toLocaleDateString(),
         r.saleNumber,
         r.jobNumber,
@@ -182,14 +206,7 @@ export function SalesReportPage() {
         r.discountAmount.toFixed(2),
       ]),
     ]
-    const csv = rows.map((row) => row.map(csvCell).join(',')).join('\n')
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `Repaint Sales Report ${from} to ${to}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
+    downloadCsv(`${group.label} Sales Report ${from} to ${to}.csv`, rows)
   }
 
   return (
@@ -219,7 +236,11 @@ export function SalesReportPage() {
       <Tabs defaultValue="all">
         <TabsList>
           <TabsTrigger value="all">All sales</TabsTrigger>
-          {repaintEnabled && <TabsTrigger value="repaint">Repaint</TabsTrigger>}
+          {groups.map((g) => (
+            <TabsTrigger key={g.key} value={g.key}>
+              {g.label}
+            </TabsTrigger>
+          ))}
         </TabsList>
 
         <TabsContent value="all" className="flex flex-col gap-4">
@@ -242,7 +263,7 @@ export function SalesReportPage() {
                 <Card>
                   <CardContent className="pt-6">
                     <div className="text-sm text-muted-foreground">Expenses</div>
-                    <div className="text-xl font-semibold">{formatMoney(nonRepaintExpenseTotal)}</div>
+                    <div className="text-xl font-semibold">{formatMoney(nonTrackedExpenseTotal)}</div>
                   </CardContent>
                 </Card>
                 <Card>
@@ -331,10 +352,10 @@ export function SalesReportPage() {
                     <CardTitle className="text-base">Expenses by category</CardTitle>
                   </CardHeader>
                   <CardContent className="flex flex-col gap-2">
-                    {nonRepaintExpenseCategories.length === 0 && (
+                    {nonTrackedExpenseCategories.length === 0 && (
                       <p className="text-sm text-muted-foreground">No expenses in this period.</p>
                     )}
-                    {nonRepaintExpenseCategories.map((c) => (
+                    {nonTrackedExpenseCategories.map((c) => (
                       <div key={c.name} className="flex justify-between text-sm">
                         <span>{c.name}</span>
                         <span className="font-medium">{formatMoney(c.total)}</span>
@@ -364,161 +385,172 @@ export function SalesReportPage() {
           ) : null}
         </TabsContent>
 
-        {repaintEnabled && (
-        <TabsContent value="repaint" className="flex flex-col gap-4">
-          <Button variant="outline" className="self-end" onClick={exportRepaintCsv} disabled={loading || !repaint?.categoryFound}>
-            Export CSV
-          </Button>
+        {groups.map((group) => {
+          const report = groupReports[group.key]
+          const expenseCategories = expenseCategoriesFor(group)
+          return (
+            <TabsContent key={group.key} value={group.key} className="flex flex-col gap-4">
+              <Button variant="outline" className="self-end" onClick={() => exportGroupCsv(group)} disabled={loading || !report?.categoryFound}>
+                Export CSV
+              </Button>
 
-          {loading ? (
-            <p className="text-muted-foreground">Loading…</p>
-          ) : !repaint?.categoryFound ? (
-            <p className="text-muted-foreground">
-              No "Repaint" service category is set up for this tenant yet. Add one on the Service Categories page to use this tab.
-            </p>
-          ) : (
-            <>
-              <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="text-sm text-muted-foreground">Gross</div>
-                    <div className="text-xl font-semibold">{formatMoney(repaint.totalRevenue)}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {repaint.lineCount} line{repaint.lineCount === 1 ? '' : 's'} · {repaint.jobCount} job
-                      {repaint.jobCount === 1 ? '' : 's'}
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="text-sm text-muted-foreground">Expenses</div>
-                    <div className="text-xl font-semibold">{formatMoney(repaintExpenseTotal)}</div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="text-sm text-muted-foreground">Net</div>
-                    <div className="text-xl font-semibold">{formatMoney(repaintNet)}</div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="text-sm text-muted-foreground">Discounts given</div>
-                    <div className="text-xl font-semibold">{formatMoney(repaint.discountTotal)}</div>
-                  </CardContent>
-                </Card>
-              </div>
+              {loading ? (
+                <p className="text-muted-foreground">Loading…</p>
+              ) : !report?.categoryFound ? (
+                <p className="text-muted-foreground">
+                  No "{group.categoryName}" service category is set up for this tenant yet. Add one on the Service Categories page to
+                  use this tab.
+                </p>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+                    <Card>
+                      <CardContent className="pt-6">
+                        <div className="text-sm text-muted-foreground">Gross</div>
+                        <div className="text-xl font-semibold">{formatMoney(report.totalRevenue)}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {report.lineCount} line{report.lineCount === 1 ? '' : 's'} · {report.jobCount} job
+                          {report.jobCount === 1 ? '' : 's'}
+                        </div>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardContent className="pt-6">
+                        <div className="text-sm text-muted-foreground">Expenses</div>
+                        <div className="text-xl font-semibold">
+                          {formatMoney(expenseCategories.reduce((sum, c) => sum + c.total, 0))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardContent className="pt-6">
+                        <div className="text-sm text-muted-foreground">Net</div>
+                        <div className="text-xl font-semibold">{formatMoney(netFor(group))}</div>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardContent className="pt-6">
+                        <div className="text-sm text-muted-foreground">Discounts given</div>
+                        <div className="text-xl font-semibold">{formatMoney(report.discountTotal)}</div>
+                      </CardContent>
+                    </Card>
+                  </div>
 
-              {/* No "Cash advances" here, by design -- a cash advance is tied to an employee, not
-                  to whether the work they're assigned is repaint or regular wash, so there's no
-                  data that would make a repaint-scoped figure meaningful. */}
-              <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="text-sm text-muted-foreground">Promotions given</div>
-                    <div className="text-xl font-semibold">{formatMoney(repaint.promotionDiscountTotal)}</div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="text-sm text-muted-foreground">Card processing fees</div>
-                    <div className="text-xl font-semibold">{formatMoney(repaint.cardProcessingFeeTotal)}</div>
-                  </CardContent>
-                </Card>
-              </div>
+                  {/* No "Cash advances" here, by design -- a cash advance is tied to an employee,
+                      not to which category group their assigned work falls under, so there's no
+                      data that would make a group-scoped figure meaningful. */}
+                  <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+                    <Card>
+                      <CardContent className="pt-6">
+                        <div className="text-sm text-muted-foreground">Promotions given</div>
+                        <div className="text-xl font-semibold">{formatMoney(report.promotionDiscountTotal)}</div>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardContent className="pt-6">
+                        <div className="text-sm text-muted-foreground">Card processing fees</div>
+                        <div className="text-xl font-semibold">{formatMoney(report.cardProcessingFeeTotal)}</div>
+                      </CardContent>
+                    </Card>
+                  </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base">Revenue by payment method</CardTitle>
-                  </CardHeader>
-                  <CardContent className="flex flex-col gap-2">
-                    {repaint.byMethod.length === 0 && <p className="text-sm text-muted-foreground">No repaint sales in this period.</p>}
-                    {repaint.byMethod.map((m) => (
-                      <div key={m.method} className="flex justify-between text-sm">
-                        <span>{METHOD_LABELS[m.method] ?? m.method}</span>
-                        <span className="font-medium">{formatMoney(m.total)}</span>
-                      </div>
-                    ))}
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base">By service</CardTitle>
-                  </CardHeader>
-                  <CardContent className="flex flex-col gap-2">
-                    {repaint.byService.length === 0 && <p className="text-sm text-muted-foreground">No repaint sales in this period.</p>}
-                    {repaint.byService.map((s) => (
-                      <div key={s.name} className="flex justify-between text-sm">
-                        <span>
-                          {s.name} · {s.count}×
-                        </span>
-                        <span className="font-medium">{formatMoney(s.total)}</span>
-                      </div>
-                    ))}
-                  </CardContent>
-                </Card>
-              </div>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Expenses by category</CardTitle>
-                </CardHeader>
-                <CardContent className="flex flex-col gap-2">
-                  {repaintExpenseCategories.length === 0 && (
-                    <p className="text-sm text-muted-foreground">No repaint expenses in this period.</p>
-                  )}
-                  {repaintExpenseCategories.map((c) => (
-                    <div key={c.name} className="flex justify-between text-sm">
-                      <span>{c.name}</span>
-                      <span className="font-medium">{formatMoney(c.total)}</span>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Transactions</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {repaint.rows.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No repaint sales in this period.</p>
-                  ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Date</TableHead>
-                          <TableHead>Sale #</TableHead>
-                          <TableHead>Job #</TableHead>
-                          <TableHead>Plate</TableHead>
-                          <TableHead>Service</TableHead>
-                          <TableHead className="text-right">Amount</TableHead>
-                          <TableHead className="text-right">Discount</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {repaint.rows.map((r, i) => (
-                          <TableRow key={`${r.saleNumber}-${i}`}>
-                            <TableCell>{new Date(r.date).toLocaleDateString()}</TableCell>
-                            <TableCell>{r.saleNumber}</TableCell>
-                            <TableCell>{r.jobNumber}</TableCell>
-                            <TableCell>{r.plateNumber}</TableCell>
-                            <TableCell>{r.serviceName}</TableCell>
-                            <TableCell className="text-right">{formatMoney(r.amount)}</TableCell>
-                            <TableCell className="text-right">{r.discountAmount > 0 ? formatMoney(r.discountAmount) : '—'}</TableCell>
-                          </TableRow>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-base">Revenue by payment method</CardTitle>
+                      </CardHeader>
+                      <CardContent className="flex flex-col gap-2">
+                        {report.byMethod.length === 0 && (
+                          <p className="text-sm text-muted-foreground">No sales in this period.</p>
+                        )}
+                        {report.byMethod.map((m) => (
+                          <div key={m.method} className="flex justify-between text-sm">
+                            <span>{METHOD_LABELS[m.method] ?? m.method}</span>
+                            <span className="font-medium">{formatMoney(m.total)}</span>
+                          </div>
                         ))}
-                      </TableBody>
-                    </Table>
-                  )}
-                </CardContent>
-              </Card>
-            </>
-          )}
-        </TabsContent>
-        )}
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-base">By service</CardTitle>
+                      </CardHeader>
+                      <CardContent className="flex flex-col gap-2">
+                        {report.byService.length === 0 && (
+                          <p className="text-sm text-muted-foreground">No sales in this period.</p>
+                        )}
+                        {report.byService.map((s) => (
+                          <div key={s.name} className="flex justify-between text-sm">
+                            <span>
+                              {s.name} · {s.count}×
+                            </span>
+                            <span className="font-medium">{formatMoney(s.total)}</span>
+                          </div>
+                        ))}
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base">Expenses by category</CardTitle>
+                    </CardHeader>
+                    <CardContent className="flex flex-col gap-2">
+                      {expenseCategories.length === 0 && (
+                        <p className="text-sm text-muted-foreground">No expenses in this period.</p>
+                      )}
+                      {expenseCategories.map((c) => (
+                        <div key={c.name} className="flex justify-between text-sm">
+                          <span>{c.name}</span>
+                          <span className="font-medium">{formatMoney(c.total)}</span>
+                        </div>
+                      ))}
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base">Transactions</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {report.rows.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">No sales in this period.</p>
+                      ) : (
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Date</TableHead>
+                              <TableHead>Sale #</TableHead>
+                              <TableHead>Job #</TableHead>
+                              <TableHead>Plate</TableHead>
+                              <TableHead>Service</TableHead>
+                              <TableHead className="text-right">Amount</TableHead>
+                              <TableHead className="text-right">Discount</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {report.rows.map((r, i) => (
+                              <TableRow key={`${r.saleNumber}-${i}`}>
+                                <TableCell>{new Date(r.date).toLocaleDateString()}</TableCell>
+                                <TableCell>{r.saleNumber}</TableCell>
+                                <TableCell>{r.jobNumber}</TableCell>
+                                <TableCell>{r.plateNumber}</TableCell>
+                                <TableCell>{r.serviceName}</TableCell>
+                                <TableCell className="text-right">{formatMoney(r.amount)}</TableCell>
+                                <TableCell className="text-right">{r.discountAmount > 0 ? formatMoney(r.discountAmount) : '—'}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      )}
+                    </CardContent>
+                  </Card>
+                </>
+              )}
+            </TabsContent>
+          )
+        })}
       </Tabs>
     </div>
   )

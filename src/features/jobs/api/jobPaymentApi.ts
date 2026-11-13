@@ -2,6 +2,7 @@ import { db } from '@/lib/db/dexie'
 import { supabase } from '@/lib/supabase/client'
 import type { Json } from '@/lib/supabase/types'
 import { flushMutationQueue } from '@/lib/offline/syncEngine'
+import { CATEGORY_GROUPS } from '@/lib/features'
 
 export async function getJobForPayment(jobId: string) {
   const { data: job, error: jobError } = await supabase.from('jobs').select('*').eq('id', jobId).single()
@@ -37,17 +38,20 @@ export async function getJobForPayment(jobId: string) {
 
   const serviceNameById = new Map((services ?? []).map((s) => [s.id, s.name]))
 
-  // Repaint jobs skip auto-commission entirely (see 0094_repaint_manual_commission.sql) -- the
-  // cashier types each crew member's commission in by hand here instead. Scoped the same way as
-  // the Repaint Sales Report / Repaint expenses tab: any line in a category literally named
-  // "Repaint".
+  // A job with a line in any registered category group (see CATEGORY_GROUPS in @/lib/features)
+  // skips auto-commission entirely (see 0098_tint_ppf_manual_commission.sql) -- the cashier types
+  // each crew member's commission in by hand here instead. Matching is purely against the catalog
+  // here, regardless of whether the tenant's been granted that group's feature; JobPaymentPage
+  // combines this with the tenant's actual enabled groups (from settings.features) before deciding
+  // whether to show the manual-commission UI, the same two-part check the backend makes.
   const categoryIds = [...new Set((services ?? []).map((s) => s.category_id).filter((id): id is string => !!id))]
   const { data: categories, error: categoriesError } = categoryIds.length
     ? await supabase.from('service_categories').select('id, name').in('id', categoryIds)
     : { data: [], error: null }
   if (categoriesError) throw categoriesError
-  const repaintCategoryIds = new Set((categories ?? []).filter((c) => c.name.toLowerCase() === 'repaint').map((c) => c.id))
-  const isRepaintJob = (services ?? []).some((s) => s.category_id && repaintCategoryIds.has(s.category_id))
+  const groupCategoryNames = new Set(CATEGORY_GROUPS.map((g) => g.categoryName.toLowerCase()))
+  const matchedCategoryIds = new Set((categories ?? []).filter((c) => groupCategoryNames.has(c.name.toLowerCase())).map((c) => c.id))
+  const matchedCategoryNames = [...new Set((categories ?? []).filter((c) => matchedCategoryIds.has(c.id)).map((c) => c.name))]
 
   const { data: retailItems, error: retailError } = await supabase
     .from('inventory_stock_levels')
@@ -89,7 +93,7 @@ export async function getJobForPayment(jobId: string) {
     customer,
     crewNames,
     crew,
-    isRepaintJob,
+    matchedCategoryNames,
   }
 }
 
@@ -132,13 +136,13 @@ export async function getJobForPaymentOffline(jobId: string, tenantId: string) {
     retailItems: [] as { id: string; name: string; retail_price: number | null }[],
     customer: null as { id: string; full_name: string } | null,
     crewNames: boardJob.attendantsSummary ? boardJob.attendantsSummary.split(', ') : [],
-    // Repaint manual-commission entry needs crew member ids and the job's repaint-category flag,
-    // neither of which boardJobs caches -- unsupported offline. A repaint job paid while offline
-    // just gets no commission entered (complete_job() still skips its own auto-calc for it once
-    // synced, since that's a server-side check against the real service category), same as any
-    // other offline gap in this fallback.
+    // Manual-commission entry needs crew member ids and the job's matched category names, neither
+    // of which boardJobs caches -- unsupported offline. A manually-commissioned job paid while
+    // offline just gets no commission entered (complete_job() still skips its own auto-calc for it
+    // once synced, since that's a server-side check against the real service category), same as
+    // any other offline gap in this fallback.
     crew: [] as { id: string; name: string }[],
-    isRepaintJob: false,
+    matchedCategoryNames: [] as string[],
   }
 }
 
@@ -180,10 +184,10 @@ export async function getJobForPaymentFromPendingLocal(jobId: string, tenantId: 
     retailItems: [] as { id: string; name: string; retail_price: number | null }[],
     customer: null as { id: string; full_name: string } | null,
     crewNames: [...new Set(localJob.services.flatMap((s) => s.attendantNames))],
-    // Same offline gap as getJobForPaymentOffline() above -- no crew ids or repaint flag cached
-    // for a job that's never even synced yet.
+    // Same offline gap as getJobForPaymentOffline() above -- no crew ids or matched category names
+    // cached for a job that's never even synced yet.
     crew: [] as { id: string; name: string }[],
-    isRepaintJob: false,
+    matchedCategoryNames: [] as string[],
   }
 }
 

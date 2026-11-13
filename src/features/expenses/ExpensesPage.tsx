@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatMoney } from '@/lib/money'
 import { localDateString } from '@/lib/date'
-import { hasFeature } from '@/lib/features'
+import { enabledCategoryGroups, type CategoryGroup } from '@/lib/features'
 import { useTenant } from '@/app/TenantProvider'
 import { getSettings } from '@/features/settings/api/settingsApi'
 import {
@@ -47,7 +47,7 @@ export function ExpensesPage() {
   const { profile } = useTenant()
   const [categories, setCategories] = useState<ExpenseCategory[]>([])
   const [expenses, setExpenses] = useState<Expense[]>([])
-  const [repaintEnabled, setRepaintEnabled] = useState(false)
+  const [groups, setGroups] = useState<CategoryGroup[]>([])
   const [loading, setLoading] = useState(true)
 
   const [from, setFrom] = useState(startOfMonth())
@@ -79,7 +79,7 @@ export function ExpensesPage() {
       setCategories(active)
       if (!categoryId && active[0]) setCategoryId(active[0].id)
       setExpenses(expensesData)
-      setRepaintEnabled(hasFeature(settings?.features, 'repaint'))
+      setGroups(enabledCategoryGroups(settings?.features))
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to load expenses')
     } finally {
@@ -95,9 +95,14 @@ export function ExpensesPage() {
   const categoryName = (id: string) => categories.find((c) => c.id === id)?.name ?? 'Uncategorized'
   const total = expenses.filter((e) => !e.is_voided).reduce((sum, e) => sum + e.amount, 0)
 
-  const repaintCategoryIds = new Set(categories.filter((c) => /repaint/i.test(c.name)).map((c) => c.id))
-  const repaintExpenses = expenses.filter((e) => repaintCategoryIds.has(e.category_id))
-  const repaintTotal = repaintExpenses.filter((e) => !e.is_voided).reduce((sum, e) => sum + e.amount, 0)
+  function categoryIdsFor(group: CategoryGroup): Set<string> {
+    return new Set(categories.filter((c) => group.expenseNamePattern.test(c.name)).map((c) => c.id))
+  }
+
+  function expensesFor(group: CategoryGroup): Expense[] {
+    const ids = categoryIdsFor(group)
+    return expenses.filter((e) => ids.has(e.category_id))
+  }
 
   async function handleSubmit() {
     if (!categoryId || !description.trim() || !amount) return
@@ -298,7 +303,11 @@ export function ExpensesPage() {
       <Tabs defaultValue="all">
         <TabsList>
           <TabsTrigger value="all">All expenses</TabsTrigger>
-          {repaintEnabled && <TabsTrigger value="repaint">Repaint</TabsTrigger>}
+          {groups.map((g) => (
+            <TabsTrigger key={g.key} value={g.key}>
+              {g.label}
+            </TabsTrigger>
+          ))}
         </TabsList>
 
         <TabsContent value="all" className="flex flex-col gap-3">
@@ -308,23 +317,28 @@ export function ExpensesPage() {
           </Card>
         </TabsContent>
 
-        {repaintEnabled && (
-          <TabsContent value="repaint" className="flex flex-col gap-3">
-            <div className="text-right text-lg font-semibold">Total: {formatMoney(repaintTotal)}</div>
-            <Card>
-              <CardContent className="pt-6">
-                {repaintCategoryIds.size === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    No "Repaint" expense category is set up for this tenant yet. Add one on the Expense Categories page to use this
-                    tab.
-                  </p>
-                ) : (
-                  renderTable(repaintExpenses, 'No repaint expenses in this period.')
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-        )}
+        {groups.map((group) => {
+          const groupCategoryIds = categoryIdsFor(group)
+          const groupExpenses = expensesFor(group)
+          const groupTotal = groupExpenses.filter((e) => !e.is_voided).reduce((sum, e) => sum + e.amount, 0)
+          return (
+            <TabsContent key={group.key} value={group.key} className="flex flex-col gap-3">
+              <div className="text-right text-lg font-semibold">Total: {formatMoney(groupTotal)}</div>
+              <Card>
+                <CardContent className="pt-6">
+                  {groupCategoryIds.size === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      No "{group.label}" expense category is set up for this tenant yet. Add one on the Expense Categories page to use
+                      this tab.
+                    </p>
+                  ) : (
+                    renderTable(groupExpenses, `No ${group.label.toLowerCase()} expenses in this period.`)
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )
+        })}
       </Tabs>
     </div>
   )

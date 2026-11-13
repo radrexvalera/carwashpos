@@ -128,7 +128,9 @@ Deno.serve(async (req) => {
   // allowlist, not an arbitrary key, so a typo here can't silently create a dead flag nothing
   // reads.
   if (action === 'update_feature') {
-    const KNOWN_FEATURES = ['repaint']
+    // Keep in sync with CATEGORY_GROUPS in src/lib/features.ts -- this edge function runs in Deno,
+    // outside the Vite app's module graph, so it can't import that registry directly.
+    const KNOWN_FEATURES = ['repaint', 'tint_ppf']
     const tenantId = String(body.tenantId ?? '')
     const feature = String(body.feature ?? '')
     const enabled = Boolean(body.enabled)

@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { formatMoney } from '@/lib/money'
-import { hasFeature } from '@/lib/features'
+import { enabledCategoryGroups } from '@/lib/features'
 import { useTenant } from '@/app/TenantProvider'
 import { db } from '@/lib/db/dexie'
 import { safeGetItem, safeSetItem } from '@/lib/safeStorage'
@@ -46,6 +46,16 @@ function isLikelyNetworkFailure(err: unknown): boolean {
   return false
 }
 
+// A job qualifies for manual commission entry only when it has a line in a category group the
+// tenant has actually been granted (settings.features) -- matchedCategoryNames alone (from
+// getJobForPayment) just says which registered groups' categories the job's services fall under,
+// regardless of enablement, so this is the other half of the same check job_has_manual_commission_line()
+// makes server-side.
+function matchesEnabledGroup(matchedCategoryNames: string[], features: Settings['features'] | null | undefined) {
+  const enabledNames = new Set(enabledCategoryGroups(features).map((g) => g.categoryName))
+  return matchedCategoryNames.some((name) => enabledNames.has(name))
+}
+
 const METHOD_LABELS: Record<PaymentMethod, string> = {
   cash: 'Cash',
   gcash: 'GCash',
@@ -72,7 +82,7 @@ export function JobPaymentPage() {
   const [vehicleModel, setVehicleModel] = useState<string | null>(null)
   const [crewNames, setCrewNames] = useState<string[]>([])
   const [crew, setCrew] = useState<{ id: string; name: string }[]>([])
-  const [isRepaintJob, setIsRepaintJob] = useState(false)
+  const [isManualCommissionJob, setIsManualCommissionJob] = useState(false)
   const [manualCommissions, setManualCommissions] = useState<Record<string, string>>({})
   const [jobServices, setJobServices] = useState<JobService[]>([])
   const [discounts, setDiscounts] = useState<Record<string, string>>({})
@@ -121,7 +131,7 @@ export function JobPaymentPage() {
         setVehicleModel(jobData.vehicle.model)
         setCrewNames(jobData.crewNames)
         setCrew(jobData.crew)
-        setIsRepaintJob(jobData.isRepaintJob && hasFeature(settingsData.features, 'repaint'))
+        setIsManualCommissionJob(matchesEnabledGroup(jobData.matchedCategoryNames, settingsData.features))
         setJobServices(jobData.jobServices)
         setRetailItems(jobData.retailItems)
         setLocationName(jobData.locationName)
@@ -143,7 +153,7 @@ export function JobPaymentPage() {
           setVehicleModel(jobData.vehicle.model)
           setCrewNames(jobData.crewNames)
           setCrew(jobData.crew)
-          setIsRepaintJob(jobData.isRepaintJob && hasFeature(cachedSettings?.features, 'repaint'))
+          setIsManualCommissionJob(matchesEnabledGroup(jobData.matchedCategoryNames, cachedSettings?.features))
           setJobServices(jobData.jobServices)
           setRetailItems([])
           setLocationName(jobData.locationName)
@@ -199,11 +209,12 @@ export function JobPaymentPage() {
   const enteredAmount = Number(amount) || 0
   const changeDue = method === 'cash' && enteredAmount > remaining ? Math.round((enteredAmount - remaining) * 100) / 100 : 0
 
-  // Repaint jobs skip auto-commission server-side (0094_repaint_manual_commission.sql) -- every
+  // These jobs skip auto-commission server-side (0098_tint_ppf_manual_commission.sql) -- every
   // crew member needs an explicit figure here, since there's no formula to fall back on for
   // whoever gets left blank.
   const manualCommissionsValid =
-    !isRepaintJob || (crew.length > 0 && crew.every((c) => manualCommissions[c.id] !== undefined && manualCommissions[c.id] !== '' && Number(manualCommissions[c.id]) >= 0))
+    !isManualCommissionJob ||
+    (crew.length > 0 && crew.every((c) => manualCommissions[c.id] !== undefined && manualCommissions[c.id] !== '' && Number(manualCommissions[c.id]) >= 0))
 
   function toggleFreebie(js: JobService) {
     const next = !freebies[js.id]
@@ -246,7 +257,7 @@ export function JobPaymentPage() {
 
   async function handleSubmit() {
     if (!jobId || !shiftId || !profile) return
-    if (isRepaintJob && !manualCommissionsValid) return
+    if (isManualCommissionJob && !manualCommissionsValid) return
     setSubmitting(true)
     // Generated once and reused for both the live attempt and the offline-queued fallback below --
     // create_sale() is idempotent on it, so if the live call actually reached the server but its
@@ -262,7 +273,7 @@ export function JobPaymentPage() {
       payments,
       manualDiscountType: discountValueNum > 0 ? discountType : undefined,
       manualDiscountValue: discountValueNum > 0 ? discountValueNum : undefined,
-      manualCommissions: isRepaintJob
+      manualCommissions: isManualCommissionJob
         ? crew.map((c) => ({ employeeId: c.id, amount: Number(manualCommissions[c.id] || 0) }))
         : undefined,
     }
@@ -523,15 +534,15 @@ export function JobPaymentPage() {
         </CardContent>
       </Card>
 
-      {isRepaintJob && (
+      {isManualCommissionJob && (
         <Card>
           <CardHeader>
             <CardTitle>Commission (manual entry)</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
             <p className="text-sm text-muted-foreground">
-              This job has a repaint service -- commission isn't calculated automatically. Enter each crew member's
-              commission below.
+              This job includes work that's commissioned manually for this business -- commission isn't calculated
+              automatically. Enter each crew member's commission below.
             </p>
             {crew.length === 0 ? (
               <p className="text-sm text-destructive">No crew assigned to this job yet -- assign crew before collecting payment.</p>
@@ -665,7 +676,7 @@ export function JobPaymentPage() {
               submitting ||
               (roundedTotal > 0.01 && payments.length === 0) ||
               Math.abs(remaining) > 0.01 ||
-              (isRepaintJob && !manualCommissionsValid)
+              (isManualCommissionJob && !manualCommissionsValid)
             }
             onClick={handleSubmit}
           >

@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase/client'
+import { CATEGORY_GROUPS } from '@/lib/features'
 
 export interface OwnerTenantRow {
   id: string
@@ -9,8 +10,9 @@ export interface OwnerTenantRow {
   features: Record<string, boolean>
 }
 
-// Keep in sync with KNOWN_FEATURES in supabase/functions/owner-console/index.ts.
-export const KNOWN_FEATURES: { key: string; label: string }[] = [{ key: 'repaint', label: 'Repaint tracking' }]
+// Derived from the same registry the Sales Report/Expenses tabs and Collect Payment read --
+// keep the allowlist in supabase/functions/owner-console/index.ts in sync with CATEGORY_GROUPS.
+export const KNOWN_FEATURES: { key: string; label: string }[] = CATEGORY_GROUPS.map((g) => ({ key: g.key, label: g.label }))
 
 // supabase.functions.invoke() only gives a generic "non-2xx" message for a FunctionsHttpError --
 // the real reason is in the response body, which the client wraps but doesn't surface
