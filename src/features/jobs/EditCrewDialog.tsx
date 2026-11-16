@@ -70,7 +70,7 @@ export function EditCrewDialog({ jobId, tenantId, completed = true, onOpenChange
         const result = await recomputeJobCommission(jobId)
         toast.success(
           result.entries_written > 0
-            ? `Crew updated. Commission recomputed at ${result.rate}% (${formatMoney(result.pool)} split ${result.crew_count} way${result.crew_count === 1 ? '' : 's'}).`
+            ? `Crew updated. Commission recomputed (${formatMoney(result.pool)} total).`
             : 'Crew updated. No commission change needed.',
         )
       } else {

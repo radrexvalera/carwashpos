@@ -60,5 +60,5 @@ export async function setJobServiceCrew(tenantId: string, jobServiceId: string, 
 export async function recomputeJobCommission(jobId: string) {
   const { data, error } = await supabase.rpc('recompute_job_commission', { p_job_id: jobId })
   if (error) throw error
-  return data as { job_id: string; rate: number; pool: number; crew_count: number; entries_written: number }
+  return data as { job_id: string; pool: number; entries_written: number; bonus_entries_created: number }
 }
