@@ -282,7 +282,10 @@ export async function getCommissionReport(from: string, to: string) {
       // "whichever row is latest" instead is unreliable: a reversal + its correction are written
       // in the same transaction and can share the exact same created_at, making "latest" a coin
       // flip on query result order.
-      jobLevelByJobRate: Map<string, { jobId: string; rate: number; netAmount: number; lastCreatedAt: string; grossAmount: number }>
+      jobLevelByJobRate: Map<
+        string,
+        { jobId: string; rate: number; netAmount: number; lastCreatedAt: string; lines: Map<string, { gross: number; net: number }> }
+      >
     }
   >()
 
@@ -303,19 +306,19 @@ export async function getCommissionReport(from: string, to: string) {
 
     if (!entry.service_id) {
       const key = `${entry.job_id}:${entry.commission_rate}`
-      const existing = bucket.jobLevelByJobRate.get(key)
-      if (!existing) {
-        bucket.jobLevelByJobRate.set(key, {
-          jobId: entry.job_id,
-          rate: entry.commission_rate,
-          netAmount: entry.commission_amount,
-          lastCreatedAt: entry.created_at,
-          grossAmount: entry.gross_service_amount,
-        })
-      } else {
-        existing.netAmount += entry.commission_amount
-        if (entry.created_at > existing.lastCreatedAt) existing.lastCreatedAt = entry.created_at
+      let jobRate = bucket.jobLevelByJobRate.get(key)
+      if (!jobRate) {
+        jobRate = { jobId: entry.job_id, rate: entry.commission_rate, netAmount: 0, lastCreatedAt: entry.created_at, lines: new Map() }
+        bucket.jobLevelByJobRate.set(key, jobRate)
       }
+      jobRate.netAmount += entry.commission_amount
+      if (entry.created_at > jobRate.lastCreatedAt) jobRate.lastCreatedAt = entry.created_at
+      // One row per service line since per-line attribution; older rows (no job_service_id) carry
+      // the whole job's total. Only lines still netting commission count toward "Job total".
+      const lineKey = entry.job_service_id ?? 'job'
+      const line = jobRate.lines.get(lineKey)
+      if (line) line.net += entry.commission_amount
+      else jobRate.lines.set(lineKey, { gross: entry.gross_service_amount, net: entry.commission_amount })
       continue
     }
 
@@ -343,7 +346,7 @@ export async function getCommissionReport(from: string, to: string) {
         jobNumber: jobNumberById.get(jobRate.jobId) ?? jobRate.jobId.slice(0, 8),
         plateNumber: plateByJobId(jobRate.jobId),
         date: jobRate.lastCreatedAt,
-        grossAmount: jobRate.grossAmount,
+        grossAmount: [...jobRate.lines.values()].reduce((sum, l) => (Math.abs(l.net) < 0.005 ? sum : sum + l.gross), 0),
         commissionAmount: jobRate.netAmount,
       })
     }
