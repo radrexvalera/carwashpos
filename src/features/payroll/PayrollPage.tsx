@@ -368,6 +368,7 @@ export function PayrollPage() {
             jobServiceNames: j.jobServiceNames,
             rate: j.rate,
             grossAmount: j.grossAmount,
+            crewCount: j.crewCount,
             discountAmount: j.discountAmount,
             discountDetail: j.discountDetail,
             hasFreebie: j.hasFreebie,
@@ -655,6 +656,7 @@ export function PayrollPage() {
                             <TableHead>Services on job</TableHead>
                             <TableHead>Rate</TableHead>
                             <TableHead className="text-right">Job total</TableHead>
+                            <TableHead className="text-right">Crew</TableHead>
                             <TableHead className="text-right">Discount</TableHead>
                             <TableHead className="text-right">Commission</TableHead>
                           </TableRow>
@@ -666,7 +668,7 @@ export function PayrollPage() {
                               <Fragment key={`${j.jobId}-${i}`}>
                                 {newDateGroup && (
                                   <TableRow className="hover:bg-transparent">
-                                    <TableCell colSpan={10} className="h-2 p-0" />
+                                    <TableCell colSpan={11} className="h-2 p-0" />
                                   </TableRow>
                                 )}
                                 <TableRow>
@@ -678,6 +680,7 @@ export function PayrollPage() {
                                   <TableCell>{j.jobServiceNames || '—'}</TableCell>
                                   <TableCell>{j.rate}%</TableCell>
                                   <TableCell className="text-right">{formatMoney(j.grossAmount)}</TableCell>
+                                  <TableCell className="text-right">{j.crewCount || '—'}</TableCell>
                                   <TableCell className="text-right">{j.discountAmount > 0 ? formatMoney(j.discountAmount) : '—'}</TableCell>
                                   <TableCell className="text-right">{formatMoney(j.commissionAmount)}</TableCell>
                                 </TableRow>

@@ -144,7 +144,7 @@ export interface SaleDetail {
   plateNumber: string | null
   vehicleModel: string | null
   crewNames: string[]
-  items: { name: string; quantity: number; unitPrice: number; lineTotal: number }[]
+  items: { name: string; quantity: number; unitPrice: number; lineTotal: number; crewNames: string[] }[]
   subtotal: number
   manualDiscount: number
   promotionDiscount: number
@@ -196,7 +196,7 @@ export async function getSaleDetail(saleId: string): Promise<SaleDetail> {
   // matches what the customer is being charged for on this particular receipt.
   const jobServiceIds = (itemsRes.data ?? []).map((i) => i.job_service_id).filter((id): id is string => !!id)
   const { data: attendants, error: attendantsError } = jobServiceIds.length
-    ? await supabase.from('job_service_attendants').select('employee_id').in('job_service_id', jobServiceIds)
+    ? await supabase.from('job_service_attendants').select('job_service_id, employee_id').in('job_service_id', jobServiceIds)
     : { data: [], error: null }
   if (attendantsError) throw attendantsError
 
@@ -205,7 +205,14 @@ export async function getSaleDetail(saleId: string): Promise<SaleDetail> {
     ? await supabase.from('employees').select('id, full_name, nickname').in('id', employeeIds)
     : { data: [], error: null }
   if (employeesError) throw employeesError
-  const crewNames = (employees ?? []).map((e) => e.nickname || e.full_name)
+  const nameById = new Map((employees ?? []).map((e) => [e.id, e.nickname || e.full_name]))
+  const crewNames = [...nameById.values()]
+  // A line nobody was assigned to is credited to the whole crew (job_service_commission_crew, 0100).
+  const lineCrewNames = (jobServiceId: string | null) => {
+    if (!jobServiceId) return []
+    const own = (attendants ?? []).filter((a) => a.job_service_id === jobServiceId).map((a) => nameById.get(a.employee_id) ?? '')
+    return own.length > 0 ? [...new Set(own)] : crewNames
+  }
 
   return {
     id: sale.id,
@@ -222,6 +229,7 @@ export async function getSaleDetail(saleId: string): Promise<SaleDetail> {
       quantity: i.quantity,
       unitPrice: i.unit_price,
       lineTotal: i.line_total,
+      crewNames: lineCrewNames(i.job_service_id),
     })),
     subtotal: sale.subtotal,
     manualDiscount: sale.manual_discount_amount,

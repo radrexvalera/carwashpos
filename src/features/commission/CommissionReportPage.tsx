@@ -114,6 +114,7 @@ export function CommissionReportPage() {
                               <TableHead>Plate</TableHead>
                               <TableHead>Date</TableHead>
                               <TableHead className="text-right">Job total</TableHead>
+                              <TableHead className="text-right">Crew</TableHead>
                               <TableHead className="text-right">Commission</TableHead>
                             </TableRow>
                           </TableHeader>
@@ -124,6 +125,7 @@ export function CommissionReportPage() {
                                 <TableCell>{j.plateNumber ?? '—'}</TableCell>
                                 <TableCell>{new Date(j.date).toLocaleDateString()}</TableCell>
                                 <TableCell className="text-right">{formatMoney(j.grossAmount)}</TableCell>
+                                <TableCell className="text-right">{j.crewCount || '—'}</TableCell>
                                 <TableCell className="text-right">{formatMoney(j.commissionAmount)}</TableCell>
                               </TableRow>
                             ))}

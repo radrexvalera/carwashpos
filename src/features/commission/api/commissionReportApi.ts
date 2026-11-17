@@ -7,6 +7,7 @@ export interface CommissionRateJob {
   plateNumber: string | null
   date: string
   grossAmount: number
+  crewCount: number
   commissionAmount: number
 }
 
@@ -20,6 +21,7 @@ export interface PayrollJobBreakdownRow {
   jobServiceNames: string
   rate: number
   grossAmount: number
+  crewCount: number
   // Every discount given on what this row covers: per-line discounts set at job creation, per-line
   // discounts at Collect Payment, and this row's share of a sale-wide discount (percent/amount off,
   // promotion, loyalty) -- plus a membership stamp-card redemption, which zeroes one line.
@@ -32,6 +34,51 @@ export interface PayrollJobBreakdownRow {
   commissionBeforeDiscount: number
   discountCommissionCut: number
   commissionAmount: number
+}
+
+// Same rule as job_service_commission_crew() (0100): a line's crew is its own attendants, or the
+// job's crew (everyone on its non-cancelled lines) when nobody was assigned to it. Returns how many
+// people shared the commission on the given lines (null = the whole job).
+async function loadCrewCounter(jobIds: string[]) {
+  const lines: { id: string; job_id: string; status: string }[] = []
+  const attendants: { job_service_id: string; employee_id: string }[] = []
+  for (let i = 0; i < jobIds.length; i += 100) {
+    const { data, error } = await supabase.from('job_services').select('id, job_id, status').in('job_id', jobIds.slice(i, i + 100))
+    if (error) throw error
+    lines.push(...(data ?? []))
+  }
+  const lineIds = lines.map((l) => l.id)
+  for (let i = 0; i < lineIds.length; i += 100) {
+    const { data, error } = await supabase
+      .from('job_service_attendants')
+      .select('job_service_id, employee_id')
+      .in('job_service_id', lineIds.slice(i, i + 100))
+    if (error) throw error
+    attendants.push(...(data ?? []))
+  }
+
+  const crewByLine = new Map<string, Set<string>>()
+  for (const a of attendants) {
+    if (!crewByLine.has(a.job_service_id)) crewByLine.set(a.job_service_id, new Set())
+    crewByLine.get(a.job_service_id)!.add(a.employee_id)
+  }
+  const jobIdByLine = new Map(lines.map((l) => [l.id, l.job_id]))
+  const jobCrew = new Map<string, Set<string>>()
+  for (const l of lines) {
+    if (l.status === 'cancelled') continue
+    if (!jobCrew.has(l.job_id)) jobCrew.set(l.job_id, new Set())
+    for (const e of crewByLine.get(l.id) ?? []) jobCrew.get(l.job_id)!.add(e)
+  }
+
+  return (jobId: string, jobServiceIds: string[] | null) => {
+    if (!jobServiceIds) return jobCrew.get(jobId)?.size ?? 0
+    const crew = new Set<string>()
+    for (const id of jobServiceIds) {
+      const own = crewByLine.get(id)
+      for (const e of own && own.size > 0 ? own : jobCrew.get(jobIdByLine.get(id) ?? jobId) ?? []) crew.add(e)
+    }
+    return crew.size
+  }
 }
 
 // adjustment_reason apply_discount_commission_adjustment() (0090/0094) stamps on the negative
@@ -72,7 +119,7 @@ export async function getPayrollEntryJobBreakdown(payrollPeriodId: string, emplo
   const vehicleSizeIds = [...new Set((jobs ?? []).map((j) => j.vehicle_size_id).filter((id): id is string => !!id))]
   const allServiceIds = [...new Set((jobServices ?? []).map((js) => js.service_id))]
 
-  const [{ data: vehicles }, { data: vehicleSizes }, { data: allServices }, { data: sales }] = await Promise.all([
+  const [{ data: vehicles }, { data: vehicleSizes }, { data: allServices }, { data: sales }, crewCount] = await Promise.all([
     vehicleIds.length ? supabase.from('vehicles').select('id, plate_number').in('id', vehicleIds) : Promise.resolve({ data: [] }),
     vehicleSizeIds.length
       ? supabase.from('vehicle_sizes').select('id, name').in('id', vehicleSizeIds)
@@ -89,6 +136,7 @@ export async function getPayrollEntryJobBreakdown(payrollPeriodId: string, emplo
           .in('job_id', jobIds)
           .neq('status', 'voided')
       : Promise.resolve({ data: [] }),
+    loadCrewCounter(jobIds),
   ])
 
   const saleIds = (sales ?? []).map((s) => s.id)
@@ -209,6 +257,7 @@ export async function getPayrollEntryJobBreakdown(payrollPeriodId: string, emplo
       jobServiceNames: (serviceNamesByJobId.get(row.jobId) ?? []).join(', '),
       rate: row.rate,
       grossAmount: row.grossAmount,
+      crewCount: crewCount(row.jobId, row.jobServiceId ? [row.jobServiceId] : null),
       discountAmount,
       discountDetail: lineIds.map(describeLine).filter(Boolean).join(', '),
       hasFreebie: lineIds.some((id) => lineDiscount.get(id)?.freebie && (lineDiscount.get(id)?.amount ?? 0) > 0),
@@ -255,6 +304,7 @@ export async function getCommissionReport(from: string, to: string) {
       : Promise.resolve({ data: [] }),
     jobIds.length ? supabase.from('jobs').select('id, job_number, vehicle_id').in('id', jobIds) : Promise.resolve({ data: [] }),
   ])
+  const crewCount = await loadCrewCounter(jobIds)
 
   const vehicleIds = [...new Set((jobs ?? []).map((j) => j.vehicle_id))]
   const { data: vehicles } = vehicleIds.length
@@ -347,6 +397,12 @@ export async function getCommissionReport(from: string, to: string) {
         plateNumber: plateByJobId(jobRate.jobId),
         date: jobRate.lastCreatedAt,
         grossAmount: [...jobRate.lines.values()].reduce((sum, l) => (Math.abs(l.net) < 0.005 ? sum : sum + l.gross), 0),
+        crewCount: crewCount(
+          jobRate.jobId,
+          jobRate.lines.has('job') && Math.abs(jobRate.lines.get('job')!.net) >= 0.005
+            ? null
+            : [...jobRate.lines].filter(([, l]) => Math.abs(l.net) >= 0.005).map(([id]) => id),
+        ),
         commissionAmount: jobRate.netAmount,
       })
     }

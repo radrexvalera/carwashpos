@@ -12,6 +12,7 @@ export interface PayslipPdfJobRow {
   jobServiceNames?: string
   rate: number
   grossAmount: number
+  crewCount?: number
   discountAmount?: number
   discountDetail?: string
   hasFreebie?: boolean
@@ -81,7 +82,8 @@ const styles = StyleSheet.create({
   colSize: { width: '8%', overflow: 'hidden', paddingRight: 3 },
   colDate: { width: '9%', overflow: 'hidden', paddingRight: 3 },
   colService: { width: '10%', overflow: 'hidden', paddingRight: 3 },
-  colServicesOnJob: { width: '22%', overflow: 'hidden', paddingRight: 3 },
+  colServicesOnJob: { width: '17%', overflow: 'hidden', paddingRight: 3 },
+  colCrew: { width: '5%', textAlign: 'right', overflow: 'hidden', paddingRight: 3 },
   colRate: { width: '6%', textAlign: 'right', overflow: 'hidden', paddingRight: 3 },
   // 10% fits a five-digit amount ("₱50,000.00") -- at 8% a repaint job total ran into its discount.
   colGross: { width: '10%', textAlign: 'right', overflow: 'hidden', paddingRight: 3 },
@@ -241,6 +243,7 @@ export function PayslipPdfDocument(d: PayslipPdfData) {
               <Text style={styles.colServicesOnJob}>Services on job</Text>
               <Text style={styles.colRate}>Rate</Text>
               <Text style={styles.colGross}>Job total</Text>
+              <Text style={styles.colCrew}>Crew</Text>
               <Text style={styles.colDiscount}>Discount</Text>
               <Text style={styles.colCommission}>Commission</Text>
             </View>
@@ -254,6 +257,7 @@ export function PayslipPdfDocument(d: PayslipPdfData) {
                 <Text style={styles.colServicesOnJob}>{job.jobServiceNames || '-'}</Text>
                 <Text style={styles.colRate}>{job.rate}%</Text>
                 <Text style={styles.colGross}>{formatMoney(job.grossAmount)}</Text>
+                <Text style={styles.colCrew}>{job.crewCount || '-'}</Text>
                 <Text style={styles.colDiscount}>{job.discountAmount ? formatMoney(job.discountAmount) : '-'}</Text>
                 <Text style={styles.colCommission}>{formatMoney(job.commissionAmount)}</Text>
               </View>
@@ -267,6 +271,7 @@ export function PayslipPdfDocument(d: PayslipPdfData) {
               <Text style={styles.colServicesOnJob} />
               <Text style={styles.colRate} />
               <Text style={styles.colGross} />
+              <Text style={styles.colCrew} />
               <Text style={styles.colDiscount} />
               <Text style={[styles.colCommission, styles.bold]}>
                 {formatMoney(d.commissionJobs.reduce((sum, j) => sum + j.commissionAmount, 0))}

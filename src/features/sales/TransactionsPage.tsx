@@ -253,16 +253,21 @@ export function TransactionsPage() {
                 )}
                 {detail.crewNames.length > 0 && (
                   <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Crew</span>
-                    <span>{detail.crewNames.join(', ')}</span>
+                    <span className="text-muted-foreground">Crew ({detail.crewNames.length})</span>
+                    <span className="text-right">{detail.crewNames.join(', ')}</span>
                   </div>
                 )}
 
                 <div className="mt-2 flex flex-col gap-1 border-t pt-2">
                   {detail.items.map((item, i) => (
-                    <div key={i} className="flex justify-between text-sm">
+                    <div key={i} className="flex justify-between gap-2 text-sm">
                       <span>
                         {item.name} × {item.quantity}
+                        {item.crewNames.length > 0 && (
+                          <span className="block text-xs text-muted-foreground">
+                            {item.crewNames.length} crew · {item.crewNames.join(', ')}
+                          </span>
+                        )}
                       </span>
                       <span>{formatMoney(item.lineTotal)}</span>
                     </div>
