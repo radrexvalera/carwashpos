@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase/client'
 import { formatMoney } from '@/lib/money'
+import { fetchAllRows, fetchRowsIn } from '@/lib/supabase/batch'
 
 export interface CommissionRateJob {
   jobId: string
@@ -278,16 +279,14 @@ export async function getCommissionReport(from: string, to: string) {
   // corrects, while still showing the original (now-wrong) entry -- same class of bug fixed in
   // generate_payroll_period() (migration 0089), just in this report's own query instead of a
   // database function.
-  const { data: jobsInRange, error: jobsError } = await supabase.from('jobs').select('id').gte('completed_at', from).lte('completed_at', to)
-  if (jobsError) throw jobsError
-  const jobIdsInRange = (jobsInRange ?? []).map((j) => j.id)
+  const jobsInRange = await fetchAllRows(() => supabase.from('jobs').select('id').gte('completed_at', from).lte('completed_at', to).order('id'))
+  const jobIdsInRange = jobsInRange.map((j) => j.id)
   if (jobIdsInRange.length === 0) return { grandTotal: 0, employees: [] }
 
   // No status filter -- a reversal row (negative commission_amount) must be summed in, not
   // excluded, or its original mistaken entry stays fully counted with nothing left to cancel it
   // out. Status here is about payroll-claiming (earned/approved/paid), not report inclusion.
-  const { data: entries, error } = await supabase.from('commission_ledger').select('*').in('job_id', jobIdsInRange)
-  if (error) throw error
+  const entries = await fetchRowsIn(jobIdsInRange, (ids) => supabase.from('commission_ledger').select('*').in('job_id', ids).order('id'))
 
   const employeeIds = [...new Set((entries ?? []).map((e) => e.employee_id))]
   const serviceIds = [...new Set((entries ?? []).map((e) => e.service_id).filter((id): id is string => !!id))]
@@ -295,21 +294,15 @@ export async function getCommissionReport(from: string, to: string) {
   // instead of merging with every other job's job-level commission under one bucket.
   const jobIds = [...new Set((entries ?? []).filter((e) => !e.service_id).map((e) => e.job_id))]
 
-  const [{ data: employees }, { data: services }, { data: jobs }] = await Promise.all([
-    employeeIds.length
-      ? supabase.from('employees').select('id, full_name').in('id', employeeIds)
-      : Promise.resolve({ data: [] }),
-    serviceIds.length
-      ? supabase.from('services').select('id, name').in('id', serviceIds)
-      : Promise.resolve({ data: [] }),
-    jobIds.length ? supabase.from('jobs').select('id, job_number, vehicle_id').in('id', jobIds) : Promise.resolve({ data: [] }),
+  const [employees, services, jobs] = await Promise.all([
+    fetchRowsIn(employeeIds, (ids) => supabase.from('employees').select('id, full_name').in('id', ids).order('id')),
+    fetchRowsIn(serviceIds, (ids) => supabase.from('services').select('id, name').in('id', ids).order('id')),
+    fetchRowsIn(jobIds, (ids) => supabase.from('jobs').select('id, job_number, vehicle_id').in('id', ids).order('id')),
   ])
   const crewCount = await loadCrewCounter(jobIds)
 
   const vehicleIds = [...new Set((jobs ?? []).map((j) => j.vehicle_id))]
-  const { data: vehicles } = vehicleIds.length
-    ? await supabase.from('vehicles').select('id, plate_number').in('id', vehicleIds)
-    : { data: [] }
+  const vehicles = await fetchRowsIn(vehicleIds, (ids) => supabase.from('vehicles').select('id, plate_number').in('id', ids).order('id'))
 
   const employeeNameById = new Map((employees ?? []).map((e) => [e.id, e.full_name]))
   const serviceNameById = new Map((services ?? []).map((s) => [s.id, s.name]))

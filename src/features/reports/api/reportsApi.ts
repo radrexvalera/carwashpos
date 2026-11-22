@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase/client'
 import { localDateString } from '@/lib/date'
+import { fetchAllRows, fetchRowsIn } from '@/lib/supabase/batch'
 
 // Resolves every service under any of the given service_categories names for this tenant --
 // shared by getSalesReport() (which excludes these lines for whichever category groups are
@@ -29,31 +30,24 @@ async function getServiceIdsForCategoryNames(categoryNames: string[]): Promise<S
 // side's share of that sale's line revenue, since those fields don't carry their own per-line
 // split. Per-line discounts need no apportioning; sale_items.discount_amount is already exact per line.
 export async function getSalesReport(fromIso: string, toIso: string, excludeCategoryNames: string[] = []) {
-  const { data: sales, error } = await supabase.from('sales').select('*').gte('created_at', fromIso).lte('created_at', toIso)
-  if (error) throw error
+  const sales = await fetchAllRows(() =>
+    supabase.from('sales').select('*').gte('created_at', fromIso).lte('created_at', toIso).order('id'),
+  )
 
-  const completed = (sales ?? []).filter((s) => s.status === 'completed')
-  const voidedCount = (sales ?? []).filter((s) => s.status === 'voided').length
+  const completed = sales.filter((s) => s.status === 'completed')
+  const voidedCount = sales.filter((s) => s.status === 'voided').length
   const saleIds = completed.map((s) => s.id)
 
-  const [paymentsRes, itemsRes, excludedServiceIds] = await Promise.all([
-    saleIds.length
-      ? supabase.from('payments').select('*').in('sale_id', saleIds)
-      : Promise.resolve({ data: [], error: null }),
-    saleIds.length
-      ? supabase.from('sale_items').select('*').in('sale_id', saleIds)
-      : Promise.resolve({ data: [], error: null }),
+  const [payments, items, excludedServiceIds] = await Promise.all([
+    fetchRowsIn(saleIds, (ids) => supabase.from('payments').select('*').in('sale_id', ids).order('id')),
+    fetchRowsIn(saleIds, (ids) => supabase.from('sale_items').select('*').in('sale_id', ids).order('id')),
     getServiceIdsForCategoryNames(excludeCategoryNames),
   ])
-  if (paymentsRes.error) throw paymentsRes.error
-  if (itemsRes.error) throw itemsRes.error
 
-  const items = itemsRes.data ?? []
   const jobServiceIds = items.filter((i) => i.line_type === 'job_service' && i.job_service_id).map((i) => i.job_service_id as string)
-  const { data: jobServices, error: jsError } = jobServiceIds.length
-    ? await supabase.from('job_services').select('id, service_id').in('id', jobServiceIds)
-    : { data: [], error: null }
-  if (jsError) throw jsError
+  const jobServices = await fetchRowsIn(jobServiceIds, (ids) =>
+    supabase.from('job_services').select('id, service_id').in('id', ids).order('id'),
+  )
   const serviceIdByJobServiceId = new Map((jobServices ?? []).map((js) => [js.id, js.service_id]))
 
   function isExcludedItem(item: (typeof items)[number]) {
@@ -113,7 +107,7 @@ export async function getSalesReport(fromIso: string, toIso: string, excludeCate
   }
 
   const byMethod = new Map<string, number>()
-  for (const p of paymentsRes.data ?? []) {
+  for (const p of payments) {
     const fraction = includedFractionBySale.get(p.sale_id) ?? 1
     byMethod.set(p.method, (byMethod.get(p.method) ?? 0) + p.amount * fraction)
   }
@@ -188,11 +182,9 @@ export async function getCategoryGroupSalesReport(fromIso: string, toIso: string
     return { categoryFound: true as const, categoryName: category.name, ...EMPTY_CATEGORY_GROUP_REPORT }
   }
 
-  const { data: jobServicesAll, error: jobServicesError } = await supabase
-    .from('job_services')
-    .select('id, job_id, service_id')
-    .in('service_id', categoryServiceIds)
-  if (jobServicesError) throw jobServicesError
+  const jobServicesAll = await fetchRowsIn(categoryServiceIds, (ids) =>
+    supabase.from('job_services').select('id, job_id, service_id').in('service_id', ids).order('id'),
+  )
   const groupJobServiceIds = new Set((jobServicesAll ?? []).map((js) => js.id))
   const jobIdByJobServiceId = new Map((jobServicesAll ?? []).map((js) => [js.id, js.job_id]))
 
@@ -200,27 +192,20 @@ export async function getCategoryGroupSalesReport(fromIso: string, toIso: string
     return { categoryFound: true as const, categoryName: category.name, ...EMPTY_CATEGORY_GROUP_REPORT }
   }
 
-  const { data: sales, error: salesError } = await supabase
-    .from('sales')
-    .select('*')
-    .gte('created_at', fromIso)
-    .lte('created_at', toIso)
-    .eq('status', 'completed')
-  if (salesError) throw salesError
-  const saleIds = (sales ?? []).map((s) => s.id)
-  const saleById = new Map((sales ?? []).map((s) => [s.id, s]))
+  const sales = await fetchAllRows(() =>
+    supabase.from('sales').select('*').gte('created_at', fromIso).lte('created_at', toIso).eq('status', 'completed').order('id'),
+  )
+  const saleIds = sales.map((s) => s.id)
+  const saleById = new Map(sales.map((s) => [s.id, s]))
 
   if (saleIds.length === 0) {
     return { categoryFound: true as const, categoryName: category.name, ...EMPTY_CATEGORY_GROUP_REPORT }
   }
 
-  const [itemsRes, paymentsRes] = await Promise.all([
-    supabase.from('sale_items').select('*').in('sale_id', saleIds),
-    supabase.from('payments').select('*').in('sale_id', saleIds),
+  const [items, payments] = await Promise.all([
+    fetchRowsIn(saleIds, (ids) => supabase.from('sale_items').select('*').in('sale_id', ids).order('id')),
+    fetchRowsIn(saleIds, (ids) => supabase.from('payments').select('*').in('sale_id', ids).order('id')),
   ])
-  if (itemsRes.error) throw itemsRes.error
-  if (paymentsRes.error) throw paymentsRes.error
-  const items = itemsRes.data ?? []
 
   function isGroupItem(item: (typeof items)[number]) {
     return item.line_type === 'job_service' && !!item.job_service_id && groupJobServiceIds.has(item.job_service_id)
@@ -277,7 +262,7 @@ export async function getCategoryGroupSalesReport(fromIso: string, toIso: string
   }
 
   const byMethod = new Map<string, number>()
-  for (const p of paymentsRes.data ?? []) {
+  for (const p of payments) {
     const fraction = groupFractionBySale.get(p.sale_id)
     if (!fraction) continue
     byMethod.set(p.method, (byMethod.get(p.method) ?? 0) + p.amount * fraction)
@@ -285,17 +270,11 @@ export async function getCategoryGroupSalesReport(fromIso: string, toIso: string
 
   const jobIds = [...new Set(matched.map((i) => jobIdByJobServiceId.get(i.job_service_id!)).filter((id): id is string => !!id))]
 
-  const jobsRes = jobIds.length
-    ? await supabase.from('jobs').select('id, job_number, vehicle_id').in('id', jobIds)
-    : { data: [], error: null }
-  if (jobsRes.error) throw jobsRes.error
-  const jobById = new Map((jobsRes.data ?? []).map((j) => [j.id, j]))
-  const vehicleIds = [...new Set((jobsRes.data ?? []).map((j) => j.vehicle_id).filter((id): id is string => !!id))]
-  const { data: vehicles, error: vehiclesError } = vehicleIds.length
-    ? await supabase.from('vehicles').select('id, plate_number').in('id', vehicleIds)
-    : { data: [], error: null }
-  if (vehiclesError) throw vehiclesError
-  const plateByVehicleId = new Map((vehicles ?? []).map((v) => [v.id, v.plate_number]))
+  const jobs = await fetchRowsIn(jobIds, (ids) => supabase.from('jobs').select('id, job_number, vehicle_id').in('id', ids).order('id'))
+  const jobById = new Map(jobs.map((j) => [j.id, j]))
+  const vehicleIds = [...new Set(jobs.map((j) => j.vehicle_id).filter((id): id is string => !!id))]
+  const vehicles = await fetchRowsIn(vehicleIds, (ids) => supabase.from('vehicles').select('id, plate_number').in('id', ids).order('id'))
+  const plateByVehicleId = new Map(vehicles.map((v) => [v.id, v.plate_number]))
 
   const rows = matched.map((item) => {
     const jobId = jobIdByJobServiceId.get(item.job_service_id!) ?? null
@@ -329,14 +308,11 @@ export async function getCategoryGroupSalesReport(fromIso: string, toIso: string
 }
 
 export async function getExpensesByCategory(fromIso: string, toIso: string) {
-  const { data, error } = await supabase
-    .from('expenses')
-    .select('category_id, amount, is_voided')
-    .gte('expense_date', fromIso)
-    .lte('expense_date', toIso)
-  if (error) throw error
+  const data = await fetchAllRows(() =>
+    supabase.from('expenses').select('id, category_id, amount, is_voided').gte('expense_date', fromIso).lte('expense_date', toIso).order('id'),
+  )
 
-  const active = (data ?? []).filter((e) => !e.is_voided)
+  const active = data.filter((e) => !e.is_voided)
   const byCategory = new Map<string, number>()
   for (const e of active) {
     byCategory.set(e.category_id, (byCategory.get(e.category_id) ?? 0) + e.amount)
@@ -393,9 +369,13 @@ export async function getDashboardSummary(fromStr: string = localDateString(), t
   const fromIso = new Date(`${fromStr}T00:00:00`).toISOString()
   const toIso = new Date(`${toStr}T23:59:59`).toISOString()
 
-  const [salesRes, expensesRes, activeJobsRes, completedRes, lowStockRes, commissionRes] = await Promise.all([
-    supabase.from('sales').select('total, status, card_processing_fee').gte('created_at', fromIso).lte('created_at', toIso),
-    supabase.from('expenses').select('amount, is_voided').gte('expense_date', fromStr).lte('expense_date', toStr),
+  const [salesRows, expenseRows, activeJobsRes, completedRes, lowStockRes, commissionRes] = await Promise.all([
+    fetchAllRows(() =>
+      supabase.from('sales').select('id, total, status, card_processing_fee').gte('created_at', fromIso).lte('created_at', toIso).order('id'),
+    ),
+    fetchAllRows(() =>
+      supabase.from('expenses').select('id, amount, is_voided').gte('expense_date', fromStr).lte('expense_date', toStr).order('id'),
+    ),
     supabase.from('jobs').select('status').not('status', 'in', '(completed,cancelled)'),
     supabase
       .from('jobs')
@@ -406,11 +386,11 @@ export async function getDashboardSummary(fromStr: string = localDateString(), t
     supabase.from('inventory_stock_levels').select('id').eq('is_low_stock', true).eq('is_active', true),
     supabase.from('commission_ledger').select('commission_amount').eq('status', 'earned'),
   ])
-  for (const r of [salesRes, expensesRes, activeJobsRes, completedRes, lowStockRes, commissionRes]) {
+  for (const r of [activeJobsRes, completedRes, lowStockRes, commissionRes]) {
     if (r.error) throw r.error
   }
 
-  const completedSales = (salesRes.data ?? []).filter((s) => s.status === 'completed')
+  const completedSales = salesRows.filter((s) => s.status === 'completed')
   const cardProcessingFees = completedSales.reduce((sum, s) => sum + s.card_processing_fee, 0)
   // Net of the card processing fee -- the fee is a real cost the business absorbs, so it reduces
   // what counts as sales here too, not just net. Commission is NOT subtracted here separately --
@@ -418,7 +398,7 @@ export async function getDashboardSummary(fromStr: string = localDateString(), t
   // (category: Commission Payouts), so it already flows through `expenses` above. Subtracting it
   // again here would double-count it.
   const sales = completedSales.reduce((sum, s) => sum + s.total, 0) - cardProcessingFees
-  const expenses = (expensesRes.data ?? []).filter((e) => !e.is_voided).reduce((sum, e) => sum + e.amount, 0)
+  const expenses = expenseRows.filter((e) => !e.is_voided).reduce((sum, e) => sum + e.amount, 0)
 
   const jobStatusCounts: Record<string, number> = {}
   for (const j of activeJobsRes.data ?? []) {
