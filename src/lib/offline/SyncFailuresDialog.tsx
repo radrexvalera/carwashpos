@@ -12,6 +12,7 @@ const ENTITY_LABELS: Record<MutationQueueEntry['entity'], string> = {
   job_status_update: 'Update job status',
   job_complete: 'Complete job',
   job_payment: 'Collect payment',
+  job_downpayment: 'Downpayment',
   ticket_complete: 'Complete ticket (legacy)',
   ticket_status_update: 'Update ticket status (legacy)',
 }
@@ -28,9 +29,11 @@ export function SyncFailuresDialog({ open, onOpenChange }: SyncFailuresDialogPro
   const [retrying, setRetrying] = useState<string | null>(null)
 
   function plateFor(mutation: MutationQueueEntry) {
-    if (mutation.entity === 'job_payment') {
+    if (mutation.entity === 'job_payment' || mutation.entity === 'job_downpayment') {
       const jobId = (mutation.payload as { job_id?: string }).job_id
-      return (boardJobs ?? []).find((j) => j.id === jobId)?.plateNumber ?? null
+      return (
+        (boardJobs ?? []).find((j) => j.id === jobId)?.plateNumber ?? (jobs ?? []).find((j) => j.id === jobId)?.vehiclePlate ?? null
+      )
     }
     if (mutation.entity !== 'job_create' && mutation.entity !== 'job_status_update' && mutation.entity !== 'job_complete') return null
     return (jobs ?? []).find((j) => j.clientGeneratedId === mutation.clientGeneratedId)?.vehiclePlate ?? null

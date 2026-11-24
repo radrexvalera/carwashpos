@@ -13,6 +13,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { BoardJob, LocalJob } from '@/lib/offline/types'
 import { InspectionDialog } from '@/features/inspections/InspectionDialog'
 import { CancelJobDialog } from './CancelJobDialog'
+import { DownpaymentDialog } from './DownpaymentDialog'
+import { getUnsyncedDownpaymentTotals } from './api/downpaymentApi'
 import { EditCrewDialog } from './EditCrewDialog'
 import { EditJobDialog } from './EditJobDialog'
 import { useOnlineStatus } from '@/lib/offline/useOnlineStatus'
@@ -62,6 +64,10 @@ export function JobQueuePage() {
     [],
     new Set<string>(),
   )
+
+  // Downpayments still in the outbox (e.g. taken at registration while the job hasn't synced yet).
+  const unsyncedDownpayments = useLiveQuery(getUnsyncedDownpaymentTotals, [], new Map<string, number>())
+  const [downpaymentJob, setDownpaymentJob] = useState<{ id: string; plateNumber: string; total: number } | null>(null)
 
   const [inspectingJob, setInspectingJob] = useState<BoardJob | null>(null)
   const [editingJobId, setEditingJobId] = useState<string | null>(null)
@@ -191,6 +197,7 @@ export function JobQueuePage() {
                       </div>
                       <div className="text-muted-foreground">{job.services.map((s) => s.serviceName).join(', ')}</div>
                       <div className="font-medium">{formatMoney(job.estimatedTotal)}</div>
+                      <DownpaymentLine total={job.estimatedTotal} downpayment={(job.id && unsyncedDownpayments.get(job.id)) || 0} />
                       <div className="text-muted-foreground">{elapsed(job.createdAt)}</div>
                       {job.syncStatus === 'failed' && (
                         <>
@@ -229,6 +236,10 @@ export function JobQueuePage() {
                     {job.attendantsSummary && <div className="text-muted-foreground">Crew: {job.attendantsSummary}</div>}
                     {job.bayName && <div className="text-muted-foreground">Bay: {job.bayName}</div>}
                     <div className="font-medium">{formatMoney(job.estimatedTotal)}</div>
+                    <DownpaymentLine
+                      total={job.estimatedTotal}
+                      downpayment={(job.downpaymentTotal ?? 0) + (unsyncedDownpayments.get(job.id) ?? 0)}
+                    />
                     <div className="text-muted-foreground">{elapsed(job.createdAt)}</div>
 
                     {col.status === 'waiting' && (
@@ -275,6 +286,16 @@ export function JobQueuePage() {
                         Edit crew
                       </Button>
                     </div>
+                    {!job.isPaid && (
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        disabled={!online}
+                        onClick={() => setDownpaymentJob({ id: job.id, plateNumber: job.plateNumber, total: job.estimatedTotal })}
+                      >
+                        Downpayment
+                      </Button>
+                    )}
                     {!job.isPaid && (
                       <Link to={`/jobs/${job.id}/pay`}>
                         <Button variant="secondary" className="h-11 w-full text-base">
@@ -402,6 +423,7 @@ export function JobQueuePage() {
                     <div className="text-muted-foreground">{job.services_summary}</div>
                     {job.attendants_summary && <div className="text-muted-foreground">Crew: {job.attendants_summary}</div>}
                     <div className="font-medium">{formatMoney(job.estimated_total)}</div>
+                    <DownpaymentLine total={job.estimated_total} downpayment={job.downpayment_total ?? 0} />
                     {job.completed_at && (
                       <div className="text-muted-foreground">
                         Picked up{' '}
@@ -427,6 +449,13 @@ export function JobQueuePage() {
                         Cancel
                       </Button>
                     </div>
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => setDownpaymentJob({ id: job.id, plateNumber: job.plate_number, total: job.estimated_total })}
+                    >
+                      Downpayment
+                    </Button>
                     <Link to={`/jobs/${job.id}/pay`}>
                       <Button variant="secondary" className="h-11 w-full text-base">
                         Collect payment
@@ -470,6 +499,18 @@ export function JobQueuePage() {
       )}
 
       {profile && (
+        <DownpaymentDialog
+          job={downpaymentJob}
+          tenantId={profile.tenantId}
+          onOpenChange={(o) => !o && setDownpaymentJob(null)}
+          onChanged={() => {
+            refreshJobBoardCache(profile.tenantId)
+            reloadUnpaidJobs()
+          }}
+        />
+      )}
+
+      {profile && (
         <CancelJobDialog
           job={cancelingJob}
           tenantId={profile.tenantId}
@@ -477,6 +518,15 @@ export function JobQueuePage() {
           onCancelled={reloadUnpaidJobs}
         />
       )}
+    </div>
+  )
+}
+
+function DownpaymentLine({ total, downpayment }: { total: number; downpayment: number }) {
+  if (downpayment <= 0) return null
+  return (
+    <div className="text-muted-foreground">
+      Downpayment {formatMoney(downpayment)} · Balance <span className="font-medium text-foreground">{formatMoney(Math.max(0, total - downpayment))}</span>
     </div>
   )
 }

@@ -773,6 +773,31 @@ export interface Database {
         Update: never
         Relationships: []
       }
+      job_downpayments: {
+        Row: {
+          id: string
+          tenant_id: string
+          client_generated_id: string
+          job_id: string
+          shift_id: string
+          method: 'cash' | 'gcash' | 'maya' | 'bank_transfer' | 'card' | 'maribank' | 'gotyme' | 'rcbc' | 'bpi' | 'unionbank' | 'qrph'
+          amount: number
+          reference_note: string | null
+          tendered_amount: number | null
+          change_given: number | null
+          status: 'held' | 'applied' | 'refunded' | 'forfeited'
+          sale_id: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          resolved_shift_id: string | null
+          resolution_note: string | null
+          created_by: string
+          created_at: string
+        }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
       job_status_history: {
         Row: {
           id: string
@@ -917,6 +942,7 @@ export interface Database {
           change_given: number | null
           paid_at: string
           recorded_by: string
+          job_downpayment_id: string | null
         }
         Insert: never
         Update: never
@@ -1373,6 +1399,7 @@ export interface Database {
           services_summary: string | null
           attendants_summary: string | null
           is_paid: boolean
+          downpayment_total: number
         }
         Relationships: []
       }
@@ -1464,7 +1491,15 @@ export interface Database {
         Returns: Json
       }
       cancel_job: {
-        Args: { p_job_id: string; p_reason: string }
+        Args: { p_job_id: string; p_reason: string; p_downpayment_action?: 'refund' | 'keep' }
+        Returns: Json
+      }
+      record_job_downpayment: {
+        Args: { payload: Json }
+        Returns: Json
+      }
+      refund_job_downpayment: {
+        Args: { p_downpayment_id: string; p_reason: string }
         Returns: Json
       }
       create_sale: {

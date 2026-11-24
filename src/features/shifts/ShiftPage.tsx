@@ -308,6 +308,18 @@ export function ShiftPage() {
                   <span className="text-muted-foreground">+ Cash sales</span>
                   <span>{formatMoney(s.cashSales)}</span>
                 </div>
+                {s.cashDownpayments > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">+ Cash downpayments</span>
+                    <span>{formatMoney(s.cashDownpayments)}</span>
+                  </div>
+                )}
+                {s.downpaymentRefunds > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">− Downpayment refunds</span>
+                    <span>{formatMoney(s.downpaymentRefunds)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">+ Cash in</span>
                   <span>{formatMoney(s.cashIn)}</span>
@@ -433,6 +445,18 @@ export function ShiftPage() {
                 <span className="text-muted-foreground">+ Cash sales</span>
                 <span>{formatMoney(summary.cashSales)}</span>
               </div>
+              {summary.cashDownpayments > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">+ Cash downpayments</span>
+                  <span>{formatMoney(summary.cashDownpayments)}</span>
+                </div>
+              )}
+              {summary.downpaymentRefunds > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">− Downpayment refunds</span>
+                  <span>{formatMoney(summary.downpaymentRefunds)}</span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-muted-foreground">+ Cash in</span>
                 <span>{formatMoney(summary.cashIn)}</span>

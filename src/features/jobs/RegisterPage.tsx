@@ -20,6 +20,7 @@ import { createCustomer, createVehicle } from '@/features/vehicles/api/vehiclesA
 import { EditVehicleDialog } from '@/features/vehicles/EditVehicleDialog'
 import { getActiveShift } from '@/features/shifts/api/shiftsApi'
 import { createJobOffline } from './api/jobMutations'
+import { PAYMENT_METHOD_LABELS, queueDownpayment, type PaymentMethod } from './api/downpaymentApi'
 
 type VehicleRow = Database['public']['Tables']['vehicles']['Row']
 
@@ -76,6 +77,9 @@ export function RegisterPage() {
   const [sizeId, setSizeId] = useState('')
   const [lines, setLines] = useState<LocalJobServiceLine[]>([])
   const [submitting, setSubmitting] = useState(false)
+  const [downpaymentAmount, setDownpaymentAmount] = useState('')
+  const [downpaymentMethod, setDownpaymentMethod] = useState<PaymentMethod>('cash')
+  const [downpaymentRef, setDownpaymentRef] = useState('')
 
   function switchSearchMode(mode: 'plate' | 'customer') {
     if (mode === searchMode) return
@@ -345,18 +349,21 @@ export function RegisterPage() {
   }
 
   const estimatedTotal = lines.reduce((sum, l) => sum + l.lineTotal, 0)
+  const downpayment = Number(downpaymentAmount) || 0
   const createJobDisabledReason = !selectedVehicle
     ? 'Select a vehicle to continue'
     : lines.length === 0
       ? 'Add at least one service'
-      : null
+      : downpayment > estimatedTotal + 0.005
+        ? "Downpayment can't be more than the total"
+        : null
 
   async function handleCreateJob() {
     if (!profile || !selectedVehicle || lines.length === 0) return
     setSubmitting(true)
     try {
       const sizeName = sizes?.find((s) => s.id === effectiveSizeId)?.name ?? ''
-      await createJobOffline({
+      const jobId = await createJobOffline({
         tenantId: profile.tenantId,
         vehicleId: selectedVehicle.id,
         vehiclePlate: selectedVehicle.plate_number,
@@ -366,7 +373,19 @@ export function RegisterPage() {
         vehicleSizeName: sizeName,
         services: lines,
       })
-      toast.success('Job created')
+      if (downpayment > 0) {
+        await queueDownpayment({
+          tenantId: profile.tenantId,
+          jobId,
+          method: downpaymentMethod,
+          amount: downpayment,
+          referenceNote: downpaymentRef,
+        })
+      }
+      toast.success(downpayment > 0 ? `Job created with ${formatMoney(downpayment)} downpayment` : 'Job created')
+      setDownpaymentAmount('')
+      setDownpaymentRef('')
+      setDownpaymentMethod('cash')
       setSelectedVehicle(null)
       setPlateQuery('')
       setNameQuery('')
@@ -686,12 +705,47 @@ export function RegisterPage() {
             <span>Estimated total</span>
             <span>{formatMoney(estimatedTotal)}</span>
           </div>
+          <div className="flex flex-col gap-2 rounded-md border p-3">
+            <Label htmlFor="register-downpayment">Downpayment (optional)</Label>
+            <div className="flex gap-2">
+              <Select value={downpaymentMethod} onValueChange={(v) => setDownpaymentMethod(v as PaymentMethod)}>
+                <SelectTrigger className="w-36">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(PAYMENT_METHOD_LABELS).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Input
+                id="register-downpayment"
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="0.00"
+                value={downpaymentAmount}
+                onChange={(e) => setDownpaymentAmount(e.target.value)}
+              />
+            </div>
+            {downpayment > 0 && downpaymentMethod !== 'cash' && (
+              <Input placeholder="Reference number (optional)" value={downpaymentRef} onChange={(e) => setDownpaymentRef(e.target.value)} />
+            )}
+            {downpayment > 0 && downpayment <= estimatedTotal + 0.005 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Balance on pickup</span>
+                <span className="font-medium">{formatMoney(estimatedTotal - downpayment)}</span>
+              </div>
+            )}
+          </div>
           <p className="text-xs text-muted-foreground">
-            Payment is collected separately from the Job Queue once the vehicle is in — this only creates the job.
+            The rest is collected from the Job Queue once the vehicle is done.
           </p>
           <Button
             size="lg"
-            disabled={!selectedVehicle || lines.length === 0 || submitting}
+            disabled={!selectedVehicle || lines.length === 0 || submitting || !!createJobDisabledReason}
             onClick={handleCreateJob}
           >
             Create job
@@ -712,7 +766,7 @@ export function RegisterPage() {
         <div className="text-lg font-semibold">{formatMoney(estimatedTotal)}</div>
         {createJobDisabledReason && <div className="text-xs text-destructive">{createJobDisabledReason}</div>}
       </div>
-      <Button size="lg" disabled={!selectedVehicle || lines.length === 0 || submitting} onClick={handleCreateJob}>
+      <Button size="lg" disabled={!selectedVehicle || lines.length === 0 || submitting || !!createJobDisabledReason} onClick={handleCreateJob}>
         Create job
       </Button>
     </div>

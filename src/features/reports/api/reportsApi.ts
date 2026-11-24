@@ -38,10 +38,21 @@ export async function getSalesReport(fromIso: string, toIso: string, excludeCate
   const voidedCount = sales.filter((s) => s.status === 'voided').length
   const saleIds = completed.map((s) => s.id)
 
-  const [payments, items, excludedServiceIds] = await Promise.all([
+  const [payments, items, excludedServiceIds, keptDownpayments] = await Promise.all([
     fetchRowsIn(saleIds, (ids) => supabase.from('payments').select('*').in('sale_id', ids).order('id')),
     fetchRowsIn(saleIds, (ids) => supabase.from('sale_items').select('*').in('sale_id', ids).order('id')),
     getServiceIdsForCategoryNames(excludeCategoryNames),
+    // Downpayments the business kept when a job was cancelled -- income on the day of the cancel,
+    // never part of any sale.
+    fetchAllRows(() =>
+      supabase
+        .from('job_downpayments')
+        .select('id, amount')
+        .eq('status', 'forfeited')
+        .gte('resolved_at', fromIso)
+        .lte('resolved_at', toIso)
+        .order('id'),
+    ),
   ])
 
   const jobServiceIds = items.filter((i) => i.line_type === 'job_service' && i.job_service_id).map((i) => i.job_service_id as string)
@@ -121,6 +132,8 @@ export async function getSalesReport(fromIso: string, toIso: string, excludeCate
     cardProcessingFeeTotal,
     serviceRevenue,
     productRevenue,
+    keptDownpaymentTotal: keptDownpayments.reduce((sum, d) => sum + d.amount, 0),
+    keptDownpaymentCount: keptDownpayments.length,
     byMethod: [...byMethod.entries()].map(([method, total]) => ({ method, total })).sort((a, b) => b.total - a.total),
     services: [...byService.entries()]
       .map(([name, v]) => ({ name, ...v }))

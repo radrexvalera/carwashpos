@@ -46,7 +46,7 @@ export type MutationStatus = 'pending' | 'syncing' | 'synced' | 'failed'
 export interface MutationQueueEntry {
   id: string
   tenantId: string
-  entity: 'ticket_complete' | 'ticket_status_update' | 'job_create' | 'job_status_update' | 'job_complete' | 'job_payment'
+  entity: 'ticket_complete' | 'ticket_status_update' | 'job_create' | 'job_status_update' | 'job_complete' | 'job_payment' | 'job_downpayment'
   clientGeneratedId: string
   payload: unknown
   createdAt: string
@@ -138,6 +138,9 @@ export interface BoardJob {
   servicesSummary: string | null
   attendantsSummary: string | null
   isPaid: boolean
+  // Held downpayments (job_board_entries.downpayment_total); optional so rows cached before this
+  // existed still read fine.
+  downpaymentTotal?: number
 }
 
 // Read-cache mirror of the ticket_board_entries view (Phase 2) -- refreshed via Realtime + polling,

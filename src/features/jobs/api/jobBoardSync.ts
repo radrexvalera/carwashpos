@@ -9,7 +9,7 @@ import type { BoardJob, CachedJobServiceLine } from '@/lib/offline/types'
 export async function listUnpaidPickedUpJobs() {
   const { data, error } = await supabase
     .from('job_board_entries')
-    .select('id, job_number, plate_number, vehicle_make, vehicle_model, vehicle_size_name, services_summary, attendants_summary, estimated_total, completed_at')
+    .select('id, job_number, plate_number, vehicle_make, vehicle_model, vehicle_size_name, services_summary, attendants_summary, estimated_total, downpayment_total, completed_at')
     .eq('status', 'completed')
     .eq('is_paid', false)
     .order('completed_at', { ascending: true })
@@ -78,6 +78,7 @@ export async function refreshJobBoardCache(tenantId: string) {
     servicesSummary: row.services_summary,
     attendantsSummary: row.attendants_summary,
     isPaid: row.is_paid,
+    downpaymentTotal: row.downpayment_total ?? 0,
   }))
 
   await db.transaction('rw', db.boardJobs, db.jobs, db.jobServiceLines, db.mutationQueue, async () => {

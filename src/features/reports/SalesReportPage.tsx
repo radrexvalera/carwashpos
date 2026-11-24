@@ -117,7 +117,8 @@ export function SalesReportPage() {
   // grossSales is already net of the card processing fee, so it's not subtracted again here.
   // Commission isn't subtracted separately either -- once a payroll period is marked paid, it's
   // recorded as a real expense (category: Commission Payouts), already counted in expenses.total.
-  const net = sales ? sales.grossSales - nonTrackedExpenseTotal : 0
+  // Kept downpayments (cancelled jobs) are income outside any sale, so they're added on top.
+  const net = sales ? sales.grossSales + sales.keptDownpaymentTotal - nonTrackedExpenseTotal : 0
 
   function netFor(group: CategoryGroup) {
     const report = groupReports[group.key]
@@ -138,6 +139,7 @@ export function SalesReportPage() {
       ['Voided sales', String(sales.voidedCount)],
       ['Expenses', nonTrackedExpenseTotal.toFixed(2)],
       ['Card processing fees', sales.cardProcessingFeeTotal.toFixed(2)],
+      ['Kept downpayments (cancelled jobs)', sales.keptDownpaymentTotal.toFixed(2)],
       ['Net', net.toFixed(2)],
       ['Discounts given', sales.discountTotal.toFixed(2)],
       ['Promotions given', sales.promotionDiscountTotal.toFixed(2)],
@@ -301,6 +303,17 @@ export function SalesReportPage() {
                     <div className="text-xl font-semibold">{formatMoney(sales.cardProcessingFeeTotal)}</div>
                   </CardContent>
                 </Card>
+                {sales.keptDownpaymentCount > 0 && (
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="text-sm text-muted-foreground">Kept downpayments</div>
+                      <div className="text-xl font-semibold">{formatMoney(sales.keptDownpaymentTotal)}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {sales.keptDownpaymentCount} cancelled job{sales.keptDownpaymentCount === 1 ? '' : 's'} · included in Net
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">

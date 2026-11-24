@@ -136,6 +136,11 @@ export async function flushMutationQueue() {
           // everything else, so nothing else to patch here.
         }
 
+        if (mutation.entity === 'job_downpayment') {
+          const { error } = await supabase.rpc('record_job_downpayment', { payload: mutation.payload as Json })
+          if (error) throw error
+        }
+
         if (mutation.entity === 'job_status_update') {
           const payload = mutation.payload as {
             client_generated_id: string

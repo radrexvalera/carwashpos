@@ -239,7 +239,11 @@ export async function getSaleDetail(saleId: string): Promise<SaleDetail> {
     total: sale.total,
     payments: (paymentsRes.data ?? []).map((p) => ({
       method: p.method,
-      methodLabel: METHOD_LABELS[p.method] ?? p.method,
+      // A downpayment taken before the job was done lands on its sale as an ordinary payment row,
+      // dated when the money actually came in.
+      methodLabel: p.job_downpayment_id
+        ? `Downpayment · ${METHOD_LABELS[p.method] ?? p.method} · ${new Date(p.paid_at).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}`
+        : (METHOD_LABELS[p.method] ?? p.method),
       amount: p.amount,
       tenderedAmount: p.tendered_amount ?? undefined,
       changeGiven: p.change_given ?? undefined,

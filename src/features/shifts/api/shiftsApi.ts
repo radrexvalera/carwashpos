@@ -42,6 +42,8 @@ export async function openShift(input: { tenantId: string; locationId: string; o
 export interface ShiftSummary {
   openingFloat: number
   cashSales: number
+  cashDownpayments: number
+  downpaymentRefunds: number
   cashIn: number
   cashOut: number
   cashExpenses: number
@@ -56,6 +58,8 @@ export async function getShiftSummary(shiftId: string): Promise<ShiftSummary> {
   const d = data as {
     opening_float: number
     cash_sales: number
+    cash_downpayments?: number
+    downpayment_refunds?: number
     cash_in: number
     cash_out: number
     cash_expenses: number
@@ -66,6 +70,8 @@ export async function getShiftSummary(shiftId: string): Promise<ShiftSummary> {
   return {
     openingFloat: d.opening_float,
     cashSales: d.cash_sales,
+    cashDownpayments: d.cash_downpayments ?? 0,
+    downpaymentRefunds: d.downpayment_refunds ?? 0,
     cashIn: d.cash_in,
     cashOut: d.cash_out,
     cashExpenses: d.cash_expenses,

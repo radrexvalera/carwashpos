@@ -25,6 +25,7 @@ import {
   queuePaymentOffline,
 } from './api/jobPaymentApi'
 import { Receipt } from './Receipt'
+import { getUnsyncedDownpaymentTotals, listHeldDownpayments } from './api/downpaymentApi'
 import type { InventoryStockLevel } from '@/features/inventory/api/inventoryApi'
 
 type JobService = { id: string; service_id: string; unit_price: number; quantity: number; line_total: number; serviceName: string }
@@ -113,6 +114,10 @@ export function JobPaymentPage() {
   const [locationName, setLocationName] = useState('')
   const [loadError, setLoadError] = useState<string | null>(null)
   const [offlineMode, setOfflineMode] = useState(false)
+  // Downpayments already taken on this job. create_sale() folds every held one into the sale
+  // server-side, so the cashier only collects the balance here. Offline, only the cached total is
+  // known (one aggregated line).
+  const [downpayments, setDownpayments] = useState<{ method: PaymentMethod | null; amount: number; createdAt: string | null }[]>([])
 
   const online = useOnlineStatus()
   // The real, currently-open shift id -- not just a boolean -- cached per-user so create_sale()'s
@@ -124,8 +129,9 @@ export function JobPaymentPage() {
   useEffect(() => {
     if (!jobId || !profile) return
     setLoadError(null)
-    Promise.all([getJobForPayment(jobId), getActiveShift(), getSettings(profile.tenantId)])
-      .then(([jobData, shift, settingsData]) => {
+    Promise.all([getJobForPayment(jobId), getActiveShift(), getSettings(profile.tenantId), listHeldDownpayments(jobId)])
+      .then(([jobData, shift, settingsData, heldDownpayments]) => {
+        setDownpayments(heldDownpayments.map((d) => ({ method: d.method, amount: d.amount, createdAt: d.createdAt })))
         setJobNumber(jobData.job.job_number)
         setPlate(jobData.vehicle.plate_number)
         setVehicleModel(jobData.vehicle.model)
@@ -162,6 +168,10 @@ export function JobPaymentPage() {
           setCustomer(jobData.customer)
           setSettings(cachedSettings ?? null)
           setOfflineMode(true)
+          const boardJob = await db.boardJobs.get(jobId!)
+          const unsynced = (await getUnsyncedDownpaymentTotals()).get(jobId!) ?? 0
+          const cachedTotal = (boardJob?.downpaymentTotal ?? 0) + unsynced
+          setDownpayments(cachedTotal > 0 ? [{ method: null, amount: cachedTotal, createdAt: null }] : [])
         }
 
         try {
@@ -201,8 +211,13 @@ export function JobPaymentPage() {
       : 0
 
   const roundedTotal = Math.max(0, preDiscountTotal - manualDiscountAmount)
+  const downpaymentTotal = Math.round(downpayments.reduce((sum, d) => sum + d.amount, 0) * 100) / 100
+  // A discount or freebie can push the total below what was already paid down -- create_sale()
+  // rejects that, so it's blocked here with a pointer to the refund.
+  const downpaymentExceedsTotal = downpaymentTotal > roundedTotal + 0.005
+  const balanceDue = Math.max(0, Math.round((roundedTotal - downpaymentTotal) * 100) / 100)
   const paidSoFar = payments.reduce((sum, p) => sum + p.amount, 0)
-  const remaining = Math.round((roundedTotal - paidSoFar) * 100) / 100
+  const remaining = Math.round((balanceDue - paidSoFar) * 100) / 100
   // create_sale() requires payments to sum exactly to the total -- a payment amount is money
   // actually kept, not cash tendered -- so an amount typed over what's due is change to hand
   // back, never part of the recorded payment.
@@ -353,12 +368,22 @@ export function JobPaymentPage() {
       })),
       ...productLines.map((p) => ({ name: p.name, quantity: p.quantity, unitPrice: p.unitPrice, lineTotal: p.unitPrice * p.quantity })),
     ]
-    const receiptPayments = payments.map((p) => ({
+    const receiptPayments = [
+      ...downpayments.map((d) => ({
+        methodLabel: d.method
+          ? `Downpayment · ${METHOD_LABELS[d.method]}${d.createdAt ? ` · ${new Date(d.createdAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}` : ''}`
+          : 'Downpayment',
+        amount: d.amount,
+        tenderedAmount: undefined,
+        changeGiven: undefined,
+      })),
+      ...payments.map((p) => ({
       methodLabel: METHOD_LABELS[p.method],
       amount: p.amount,
       tenderedAmount: p.tenderedAmount,
       changeGiven: p.changeGiven,
-    }))
+      })),
+    ]
 
     return (
       <div className="mx-auto max-w-md">
@@ -584,6 +609,28 @@ export function JobPaymentPage() {
             <span>Total</span>
             <span>{formatMoney(roundedTotal)}</span>
           </div>
+          {downpayments.map((d, i) => (
+            <div key={i} className="flex justify-between text-sm text-muted-foreground">
+              <span>
+                Downpayment
+                {d.method ? ` · ${METHOD_LABELS[d.method]}` : ''}
+                {d.createdAt ? ` · ${new Date(d.createdAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}` : ''}
+              </span>
+              <span>-{formatMoney(d.amount)}</span>
+            </div>
+          ))}
+          {downpaymentTotal > 0 && (
+            <div className="flex justify-between text-lg font-semibold">
+              <span>Balance due</span>
+              <span>{formatMoney(balanceDue)}</span>
+            </div>
+          )}
+          {downpaymentExceedsTotal && (
+            <p className="text-sm text-destructive">
+              Downpayments ({formatMoney(downpaymentTotal)}) are more than the total. Refund the extra from the job's
+              Downpayment button on the Job Queue first.
+            </p>
+          )}
         </CardContent>
       </Card>
 
@@ -674,7 +721,8 @@ export function JobPaymentPage() {
             size="lg"
             disabled={
               submitting ||
-              (roundedTotal > 0.01 && payments.length === 0) ||
+              downpaymentExceedsTotal ||
+              (balanceDue > 0.01 && payments.length === 0) ||
               Math.abs(remaining) > 0.01 ||
               (isManualCommissionJob && !manualCommissionsValid)
             }
